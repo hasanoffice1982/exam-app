@@ -31,7 +31,7 @@ from .serializers import (
     ProctorEventSerializer,
     ProctorScreenshotSerializer,
 )
-from .throttles import HoneypotBlockThrottle, trip_honeypot
+from .throttles import HoneypotBlockThrottle, client_ip, trip_honeypot
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class LoginView(PublicAuthView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         try:
-            student = services.authenticate_student(data["roll_number"].strip(), data["password"])
+            student = services.authenticate_student(data["roll_number"].strip(), data["password"], client_ip(request))
         except services.AuthError as e:
             body = {"detail": e.message}
             if e.status == status.HTTP_401_UNAUTHORIZED and "not activated" in e.message:
@@ -82,7 +82,7 @@ class ActivateView(PublicAuthView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         try:
-            masked = services.activate_student(data["roll_number"].strip(), data["email"])
+            masked = services.activate_student(data["roll_number"].strip(), data["email"], client_ip(request))
         except services.AuthError as e:
             return Response({"detail": e.message}, status=e.status)
         return Response({"detail": f"We emailed your password to {masked}. Check your inbox (and spam), then log in.", "email": masked})
@@ -109,7 +109,8 @@ class ChangePasswordView(AccountView):
         serializer.is_valid(raise_exception=True)
         try:
             services.change_password(
-                request.user, serializer.validated_data["current_password"], serializer.validated_data["new_password"]
+                request.user, serializer.validated_data["current_password"], serializer.validated_data["new_password"],
+                client_ip(request),
             )
         except services.AuthError as e:
             return Response({"detail": e.message}, status=e.status)

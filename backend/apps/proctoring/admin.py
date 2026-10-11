@@ -40,7 +40,19 @@ class ExamAdmin(admin.ModelAdmin):
     list_filter = ("archived", "batch")
     list_editable = ("monitoring_enabled",)
     search_fields = ("exam_id", "name")
-    filter_horizontal = ("teachers",)
+    fieldsets = (
+        ("Exam", {"fields": ("exam_id", "name", "batch", "teachers")}),
+        ("Written part (Google Form)", {"fields": ("written_enabled", "form_url")}),
+        ("Practical part (after the written part)", {"fields": ("practical_enabled", "practical_instructions", "practical_url", "practical_screenshot_seconds")}),
+        ("Schedule", {"fields": ("starts_at", "ends_at")}),
+        ("Monitoring", {"fields": ("monitoring_enabled", "grace_seconds", "webcam_enabled", "webcam_interval_seconds")}),
+        ("After the exam", {"fields": ("archived", "archived_at")}),
+    )
+
+    def formfield_for_manytomany(self, db_field, request, **kwargs):
+        if db_field.name == "teachers":  # a short list of people: plain checkboxes beat the two-box picker
+            kwargs["widget"] = forms.CheckboxSelectMultiple
+        return super().formfield_for_manytomany(db_field, request, **kwargs)
     actions = ["archive_selected", "unarchive_selected"]
 
     @admin.action(description="Archive selected exams (hide from students and default lists)")
@@ -126,6 +138,11 @@ class ProctorScreenshotAdmin(ReadOnlyLogAdmin):
 
 
 class StudentAdminForm(forms.ModelForm):
+    correct_batch = forms.BooleanField(
+        required=False,
+        label="Correct a mistake (allow a lower batch)",
+        help_text="Batches only move forward. Tick this only to fix a wrongly entered batch; the change is recorded as a correction.",
+    )
     new_password = forms.CharField(
         required=False,
         widget=forms.PasswordInput(render_value=False),
@@ -135,6 +152,12 @@ class StudentAdminForm(forms.ModelForm):
     class Meta:
         model = Student
         fields = ["roll_number", "name", "email", "batch", "is_active"]
+
+    def clean(self):
+        data = super().clean()
+        # must be set before the model validates the new batch (ModelForm validation runs after this method)
+        self.instance._allow_batch_correction = bool(data.get("correct_batch"))
+        return data
 
 
 class BatchChangeInline(admin.TabularInline):

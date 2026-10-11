@@ -15,6 +15,7 @@ class EventType(StrEnum):
     BLOCKED_APP_DETECTED = "blocked_app_detected"
     WATCH_APP_DETECTED = "watch_app_detected"
     CAMERA_UNAVAILABLE = "camera_unavailable"
+    SCREENSHOT_FAILED = "screenshot_failed"
     CONNECTION_LOST = "connection_lost"
     CONNECTION_RESTORED = "connection_restored"
     WRITTEN_SUBMITTED = "written_submitted"
@@ -26,3 +27,8 @@ class EventType(StrEnum):
     EXAM_RESUMED = "exam_resumed"
     STAGE_ADVANCED = "stage_advanced"
     TIME_EXTENDED = "time_extended"
+
+
+# Written by the server on teacher/student actions; a client must never be able to claim them.
+SERVER_ONLY = frozenset({EventType.FORCE_ENDED, EventType.EXAM_RESUMED, EventType.STAGE_ADVANCED, EventType.TIME_EXTENDED})
+CLIENT_SENDABLE = tuple(e.value for e in EventType if e not in SERVER_ONLY)

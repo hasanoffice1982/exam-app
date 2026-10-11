@@ -39,10 +39,9 @@
 
   const fmt = (iso: string) => new Date(iso).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 
+  // Short on purpose: the full start/end times appear on the line under the list, so long labels never get cut off.
   function describe(exam: ExamSummary): string {
-    if (exam.status === "closed") return "ended";
-    if (exam.status === "upcoming") return `starts ${fmt(exam.starts_at!)}`;
-    return exam.ends_at ? `open, ends ${fmt(exam.ends_at)}` : "open";
+    return exam.status === "closed" ? "ended" : exam.status === "upcoming" ? "not open yet" : "open";
   }
 
   async function goToExams(student: StudentProfile): Promise<void> {

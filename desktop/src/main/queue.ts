@@ -26,7 +26,7 @@ export class UploadQueue {
     dir: string,
     private readonly owner: string,
     private readonly send: Sender,
-    private readonly maxItems = 500,
+    private readonly maxItems = 1000,
   ) {
     this.indexFile = path.join(dir, "queue.json");
     this.filesDir = path.join(dir, "files");

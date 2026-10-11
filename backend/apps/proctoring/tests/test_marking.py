@@ -140,7 +140,8 @@ class MarksViewTests(DashboardBase):
         res = self.post(self.as_user("mathteacher"), HEADERS + "t,a,1,8 / 10\n", download="1")
         self.assertEqual(res["Content-Type"], "text/csv; charset=utf-8")
         self.assertIn("math-101-marks.csv", res["Content-Disposition"])
-        lines = res.content.decode().strip().splitlines()
+        self.assertTrue(res.content.startswith(b"\xef\xbb\xbf"))
+        lines = res.content.decode("utf-8-sig").strip().splitlines()
         self.assertEqual(lines[0], ",".join(marking.MARK_COLUMNS))
         self.assertTrue(lines[1].startswith("1,Ann,81,"))
         self.assertEqual(len(lines), 2)  # only this exam's students

@@ -30,3 +30,21 @@ export async function captureScreen(win: BrowserWindow, display: "window" | "cur
   if (jpeg.length === 0) throw new Error("Captured an empty image (screen-recording permission?)");
   return jpeg;
 }
+
+/**
+ * macOS only: make sure Screen Recording is allowed before an exam starts. The first capture attempt triggers the
+ * system prompt (it gives up after 10 s if nobody answers). Throws a message the student can act on.
+ */
+export async function ensureScreenPermission(): Promise<void> {
+  if (process.platform !== "darwin" || systemPreferences.getMediaAccessStatus("screen") === "granted") return;
+  try {
+    await withTimeout(desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 1, height: 1 } }), 10_000, "no answer");
+  } catch {
+    /* the prompt may be unanswered or denied: the status check below decides */
+  }
+  if (systemPreferences.getMediaAccessStatus("screen") !== "granted") {
+    throw new Error(
+      "Screen Recording permission is needed for this exam. Open System Settings > Privacy & Security > Screen & System Audio Recording, turn on ExamProctor, then quit and reopen the app",
+    );
+  }
+}

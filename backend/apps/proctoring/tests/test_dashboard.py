@@ -239,7 +239,8 @@ class CsvTests(DashboardBase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res["Content-Type"], "text/csv; charset=utf-8")
         self.assertIn('filename="math-101-summary.csv"', res["Content-Disposition"])
-        lines = res.content.decode().strip().splitlines()
+        self.assertTrue(res.content.startswith(b"\xef\xbb\xbf"))  # UTF-8 BOM so Excel shows Bangla names correctly
+        lines = res.content.decode("utf-8-sig").strip().splitlines()
         header = lines[0].split(",")
         self.assertEqual(header[:8], ["roll_number", "name", "batch", "attempt_status", "started_at", "last_seen", "score", "flag"])
         self.assertEqual(len(lines), 2)  # header + Ann only (Bob is in physics)

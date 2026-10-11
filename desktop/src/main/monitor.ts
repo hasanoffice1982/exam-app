@@ -5,7 +5,7 @@ import { api, ApiError, isRetryable } from "./api";
 import { EventType, EventTypeValue } from "./eventTypes";
 import { CONFIG_POLL_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, PROCESS_SCAN_INTERVAL_MS, SCREENSHOT_DELAY_MS } from "./config";
 import { GraceTimer } from "./grace";
-import { AttemptKind, hardenWindow, isFormSubmissionUrl } from "./hardening";
+import { AttemptKind, hardenWindow, isFormSubmissionUrl, shouldRetryLoad } from "./hardening";
 import { AttemptLimiter } from "./limiter";
 import { scanProcesses } from "./processes";
 import { nextDelayMs, friendlyCameraError } from "./webcamUtils";
@@ -19,6 +19,7 @@ export interface MonitorOptions {
 }
 
 const MIN_PRACTICAL_SHOT_SECONDS = 15;
+const FORM_RETRY_MS = 5000;
 
 /**
  * Watches one exam window and reports to the backend. Written part: locked full-screen Google Form, blur and
@@ -47,6 +48,8 @@ export class ExamMonitor {
   private knownHits = new Set<string>();
   private hardening?: { setEnforced(on: boolean): void };
   private readonly limiter = new AttemptLimiter();
+  private readonly failLimiter = new AttemptLimiter(60_000); // one "screenshot failed" note per minute is plenty
+  private formLoadedOnce = false;
   private readonly grace: GraceTimer;
 
   constructor(
@@ -99,8 +102,20 @@ export class ExamMonitor {
       isEnforced: () => this.monitoringEnabled,
       report: (kind, detail) => this.reportAttempt(kind, detail),
     });
-    this.win.webContents.on("did-navigate", (_event, url) => {
+    const wc = this.win.webContents;
+    wc.on("did-navigate", (_event, url) => {
       if (isFormSubmissionUrl(url)) void this.onFormSubmitted();
+    });
+    wc.on("did-finish-load", () => (this.formLoadedOnce = true));
+    // Offline (or a DNS hiccup) when the exam starts: keep trying instead of leaving a locked window on an error page.
+    wc.on("did-fail-load", (_event, errorCode, _description, _url, isMainFrame) => {
+      if (!shouldRetryLoad({ errorCode, isMainFrame, loadedOnce: this.formLoadedOnce })) return;
+      setTimeout(() => {
+        if (!this.win.isDestroyed() && !this.quitting) void wc.loadURL(this.config.form_url);
+      }, FORM_RETRY_MS);
+    });
+    wc.on("render-process-gone", () => {
+      if (!this.win.isDestroyed() && !this.quitting) wc.reload(); // the page crashed: bring it back
     });
     this.win.on("blur", () => this.onBlur());
     this.win.on("focus", () => void this.onFocus());
@@ -359,6 +374,7 @@ export class ExamMonitor {
       void this.queue.flush();
     } catch (err) {
       this.log("practical screenshot failed", err);
+      void this.reportScreenshotFailure(err);
     }
   }
 
@@ -433,6 +449,13 @@ export class ExamMonitor {
     await this.withDialog(() => dialog.showMessageBox(this.win, { type: "warning", title: "Exam notice", message, detail }));
   }
 
+  /** The teacher should know when screenshots are not being captured (e.g. Screen Recording was switched off). */
+  private async reportScreenshotFailure(err: unknown): Promise<void> {
+    if (!this.monitoringEnabled || !this.failLimiter.allow(EventType.ScreenshotFailed)) return;
+    const reason = (err instanceof Error ? err.message : String(err)).slice(0, 120);
+    await this.record(EventType.ScreenshotFailed, undefined, reason);
+  }
+
   // ---- reporting ---------------------------------------------------------------------------
 
   private async record(eventType: EventTypeValue, timestamp = new Date().toISOString(), detail?: string): Promise<void> {
@@ -458,6 +481,7 @@ export class ExamMonitor {
       void this.queue.flush();
     } catch (err) {
       this.log("screenshot failed", err);
+      void this.reportScreenshotFailure(err);
     }
   }
 

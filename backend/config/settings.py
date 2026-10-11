@@ -52,7 +52,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": os.environ.get("DATABASE_PATH", BASE_DIR / "db.sqlite3"),
+        "OPTIONS": {
+            "timeout": 20,  # wait for a busy lock instead of failing: 20 students write at the same time
+            "transaction_mode": "IMMEDIATE",
+            "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;",
+        },
     }
 }
 
@@ -66,7 +71,7 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 MEDIA_URL = "/media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path(os.environ.get("MEDIA_ROOT", BASE_DIR / "media"))
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -157,6 +162,7 @@ JAZZMIN_SETTINGS = {
     "use_google_fonts_cdn": False,  # no external requests: the server may be on an offline school network
     "show_ui_builder": False,
     "changeform_format": "horizontal_tabs",
+    "changeform_format_overrides": {"proctoring.exam": "single", "proctoring.student": "single"},
 }
 JAZZMIN_UI_TWEAKS = {
     "theme": "minty",

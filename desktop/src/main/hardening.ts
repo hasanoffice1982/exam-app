@@ -40,6 +40,15 @@ export function isFormSubmissionUrl(url: string): boolean {
   return /^https:\/\/docs\.google\.com\/forms\/.+\/formResponse(?:[?#]|$)/.test(url);
 }
 
+/**
+ * Should the locked exam window try loading the form again? Only for the first load (offline at the start, DNS
+ * hiccup): once the form has shown, a failure is left alone so a half-sent submission is never silently reloaded.
+ * Chromium error -3 is "aborted" (we cancelled it ourselves).
+ */
+export function shouldRetryLoad(failure: { errorCode: number; isMainFrame: boolean; loadedOnce: boolean }): boolean {
+  return failure.isMainFrame && !failure.loadedOnce && failure.errorCode !== -3;
+}
+
 // Hosts a Google Form legitimately needs (the form itself, sign-in, assets, embedded media).
 const ALLOWED_HOST_SUFFIXES = [
   "google.com",

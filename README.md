@@ -3,6 +3,9 @@
 - `backend/` — Django + DRF API (SQLite), app `apps/proctoring`
 - `desktop/` — Electron (TypeScript) student client
 
+## Manuals
+Three PDF manuals with screenshots live in [`manuals/`](manuals/README.md): the [Administrator Manual](manuals/admin-manual.pdf), the [Teacher Manual](manuals/teacher-manual.pdf) and the [Student Guide](manuals/student-manual.pdf). A review of how everything works, the scenarios covered and the known limits is in [REVIEW.md](REVIEW.md).
+
 ## Setup
 
 ### Backend

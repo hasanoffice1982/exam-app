@@ -29,13 +29,29 @@ class AuthError(Exception):
         self.status = status
 
 
-def check_lockout(key: str) -> None:
-    if cache.get(key, 0) >= MAX_FAILED_ACTIVATIONS:
+GLOBAL_FAILURE_CEILING = 50  # per roll number across all addresses: stops a distributed guessing run
+
+
+def lock_keys(prefix: str, roll_number: str, ip: str = "") -> list[tuple[str, int]]:
+    """(cache key, allowed failures). The per-address limit means a classmate cannot lock someone else out by
+    failing logins from their own computer; the higher per-roll ceiling still stops guessing from many addresses."""
+    return [(f"{prefix}:{roll_number}:{ip}", MAX_FAILED_ACTIVATIONS), (f"{prefix}:{roll_number}", GLOBAL_FAILURE_CEILING)]
+
+
+def check_lockout(key) -> None:
+    pairs = key if isinstance(key, list) else [(key, MAX_FAILED_ACTIVATIONS)]
+    if any(cache.get(k, 0) >= limit for k, limit in pairs):
         raise AuthError("Too many failed attempts. Try again in 15 minutes.", 429)
 
 
-def register_failure(key: str) -> None:
-    cache.set(key, cache.get(key, 0) + 1, LOCKOUT_SECONDS)
+def register_failure(key) -> None:
+    for k, _ in key if isinstance(key, list) else [(key, 0)]:
+        cache.set(k, cache.get(k, 0) + 1, LOCKOUT_SECONDS)
+
+
+def clear_failures(key) -> None:
+    """A success clears this address's counter (the shared per-roll ceiling decays on its own)."""
+    cache.delete((key[0][0] if isinstance(key, list) else key))
 
 
 def issue_token(student: Student) -> str:
@@ -53,8 +69,8 @@ def issue_token(student: Student) -> str:
     return raw
 
 
-def authenticate_student(roll_number: str, password: str) -> Student:
-    key = f"login-fail:{roll_number}"
+def authenticate_student(roll_number: str, password: str, ip: str = "") -> Student:
+    key = lock_keys("login-fail", roll_number, ip)
     check_lockout(key)
     student = Student.objects.filter(roll_number=roll_number, is_active=True).first()
     if student is not None and not student.is_activated:
@@ -63,7 +79,7 @@ def authenticate_student(roll_number: str, password: str) -> Student:
     if student is None or not student.check_password(password):
         register_failure(key)
         raise AuthError("Invalid roll number or password.", 401)
-    cache.delete(key)
+    clear_failures(key)
     return student
 
 
@@ -90,9 +106,9 @@ def issue_first_time_passwords(students) -> list[tuple[Student, str]]:
 MIN_PASSWORD_LENGTH = 8
 
 
-def change_password(student: Student, current_password: str, new_password: str) -> None:
+def change_password(student: Student, current_password: str, new_password: str, ip: str = "") -> None:
     """Self-service change. Wrong current passwords count towards the same 5-try lockout as login."""
-    key = f"change-fail:{student.roll_number}"
+    key = lock_keys("change-fail", student.roll_number, ip)
     check_lockout(key)
     if not student.check_password(current_password):
         register_failure(key)
@@ -105,7 +121,7 @@ def change_password(student: Student, current_password: str, new_password: str) 
         raise AuthError("The new password cannot be your roll number.", 400)
     student.set_password(new_password)
     student.save(update_fields=["password"])
-    cache.delete(key)
+    clear_failures(key)
 
 
 def mask_email(email: str) -> str:
@@ -131,7 +147,7 @@ def _email_password(student: Student, password: str) -> None:
     )
 
 
-def activate_student(roll_number: str, email: str) -> str:
+def activate_student(roll_number: str, email: str, ip: str = "") -> str:
     """If roll number and email match a not-yet-activated student, email them a random password.
 
     The password only ever travels to the registered inbox (it is never returned to the caller), and
@@ -140,7 +156,7 @@ def activate_student(roll_number: str, email: str) -> str:
     """
     if not settings.SELF_ACTIVATION:
         raise AuthError("Ask your teacher for your password.", 403)
-    key = f"activate-fail:{roll_number}"
+    key = lock_keys("activate-fail", roll_number, ip)
     check_lockout(key)
 
     student = Student.objects.filter(roll_number=roll_number, is_active=True).first()
@@ -160,7 +176,7 @@ def activate_student(roll_number: str, email: str) -> str:
         student.password = ""
         student.save(update_fields=["password"])
         raise AuthError("We could not send the email. Please try again in a minute or tell your teacher.", 503)
-    cache.delete(key)
+    clear_failures(key)
     return mask_email(student.email)
 
 
@@ -245,10 +261,19 @@ def _audit(exam: Exam, action: str, by: str, detail: str = "") -> None:
 
 
 def archive_exam(exam: Exam, by: str) -> None:
-    """Hide a finished exam from students and the default lists. Refused while anyone is still taking it."""
-    in_progress = ExamAttempt.objects.filter(exam=exam, status=ExamAttempt.Status.IN_PROGRESS).count()
-    if in_progress:
-        raise RuleError(f"{in_progress} student(s) are still in progress. End or finish their attempts before archiving.")
+    """Hide a finished exam from students and the default lists.
+
+    While the exam can still be taken, students in progress block it. Once its time is over, attempts that never
+    reported an ending (closed laptop, killed app) are completed automatically so they don't block archiving.
+    """
+    leftovers = ExamAttempt.objects.filter(exam=exam, status=ExamAttempt.Status.IN_PROGRESS)
+    count = leftovers.count()
+    closed = exam.status == "closed"
+    if count and not closed:
+        raise RuleError(f"{count} student(s) are still in progress. End or finish their attempts before archiving.")
+    if count:
+        leftovers.update(status=ExamAttempt.Status.COMPLETED, ended_at=timezone.now())
+        _audit(exam, "attempts completed", by, f"{count} attempt(s) never reported an ending; time was over")
     exam.archived = True
     exam.archived_at = timezone.now()
     exam.save(update_fields=["archived", "archived_at"])

@@ -31,8 +31,8 @@
     .card.pad { padding:20px; }
     .scroll { overflow-x:auto; }
     table { width:100%; border-collapse:collapse; }
-    th { position:sticky; top:0; background:var(--card); text-align:left; padding:12px 16px; font-size:.75rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line); white-space:nowrap; }
-    td { padding:13px 16px; border-bottom:1px solid var(--line); font-size:.92rem; white-space:nowrap; vertical-align:middle; }
+    th { position:sticky; top:0; background:var(--card); text-align:left; padding:11px 12px; font-size:.75rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--line); white-space:nowrap; }
+    td { padding:11px 12px; border-bottom:1px solid var(--line); font-size:.92rem; white-space:nowrap; vertical-align:middle; }
     tbody tr:last-child td { border-bottom:0; } tbody tr:hover { background:var(--hover); }
     td.empty { text-align:center; color:var(--muted); padding:40px; }
     .pill { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; font-size:.78rem; font-weight:600; background:var(--idle-bg); color:var(--idle); }
@@ -46,13 +46,14 @@
     .btn:hover, button:hover { border-color:var(--brand); text-decoration:none; }
     .btn.primary, button.primary { background:var(--brand); color:#fff; border-color:var(--brand); }
     button.danger { color:var(--bad); border-color:color-mix(in srgb,var(--bad) 40%,var(--line)); } button.danger:hover { background:var(--bad-bg); border-color:var(--bad); }
-    .actions { display:flex; gap:6px; }
+    .actions { display:flex; gap:6px; flex-wrap:wrap; max-width:330px; }
     .toolbar { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:18px 0 14px; }
     .toolbar .spacer { flex:1; }
     .chips { display:flex; gap:6px; flex-wrap:wrap; } .chip { padding:6px 13px; border-radius:999px; border:1px solid var(--line); background:var(--card); font-size:.85rem; font-weight:600; color:var(--muted); cursor:pointer; }
     .chip.active { background:var(--brand-soft); border-color:var(--brand); color:var(--brand); }
     input[type=search], input[type=text], input[type=url], input[type=number], input[type=password], input[type=datetime-local], textarea, select { font:inherit; padding:8px 12px; border:1px solid var(--line); border-radius:9px; background:var(--card); color:var(--text); min-width:220px; }
     form .field input[type=text], form .field input[type=url], form .field input[type=number], form .field input[type=password], form .field input[type=datetime-local], form .field textarea, form .field select { width:100%; max-width:560px; }
+    .settings-grid .field input[type=text], .settings-grid .field input[type=url], .settings-grid .field input[type=number], .settings-grid .field input[type=datetime-local], .settings-grid .field textarea { max-width:none; }
     input[type=checkbox] { accent-color:var(--brand); width:18px; height:18px; }
     input[type=file] { font:inherit; max-width:100%; }
     input:focus, select:focus { outline:2px solid var(--brand); outline-offset:1px; }
@@ -72,6 +73,8 @@
     .weight { margin-left:6px; padding:1px 8px; border-radius:999px; background:var(--warn-bg); color:var(--warn); font-size:.78rem; font-weight:700; }
     .flash { margin:0 0 16px; padding:11px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card); font-weight:600; }
     .flash.success { color:var(--ok); background:var(--ok-bg); border-color:transparent; } .flash.error { color:var(--bad); background:var(--bad-bg); border-color:transparent; }
+    .settings-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(420px,1fr)); gap:16px; align-items:start; }
+    .settings-grid h2 { margin:0 0 14px; font-size:1.05rem; }
     .errorlist { color:var(--bad); list-style:none; padding:0; margin:6px 0; font-size:.9rem; }
     .field { margin-bottom:16px; } .field label { display:block; font-weight:600; margin-bottom:6px; }
     @media (max-width:700px) { .nav, main { padding-left:16px; padding-right:16px; } }

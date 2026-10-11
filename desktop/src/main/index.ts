@@ -2,18 +2,23 @@ import { app, BrowserWindow, ipcMain, Menu, screen, shell } from "electron";
 import * as path from "path";
 
 import { api, setToken } from "./api";
+import { describeError } from "./errors";
 import { ExamMonitor, MonitorOptions } from "./monitor";
 import { buildPracticalInfo, isOpenableLink } from "./practicalInfo";
 import { scanProcesses } from "./processes";
 import { UploadQueue } from "./queue";
 import { createSender } from "./sync";
+import { ensureScreenPermission } from "./screenshot";
 import { configureSessions, requestCameraAccess, WebcamCapturer } from "./webcam";
+import { withTimeout } from "./webcamUtils";
 
 let launcherWindow: BrowserWindow | null = null;
 let consentTimestamp: string | null = null;
 let session: StudentProfile | null = null;
 let activeMonitor: ExamMonitor | null = null;
 let practicalInfo: PracticalInfo | null = null;
+let activeQueue: UploadQueue | null = null;
+let starting = false;
 
 const secureWebPreferences = {
   contextIsolation: true,
@@ -104,7 +109,7 @@ async function assertEnvironmentClean(checkDisplays: boolean): Promise<void> {
 }
 
 function fail<T = undefined>(err: unknown): IpcResult<T> {
-  return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  return { ok: false, error: describeError(err) };
 }
 
 /** Wraps a handler so any thrown error becomes `{ ok: false, error }`. */
@@ -174,36 +179,50 @@ function registerIpc(): void {
   });
 
   handle("exam:start", async (examId: string) => {
-    const profile = requireSession();
-    const config = await api.startExam(examId);
+    if (starting) throw new Error("The exam is already starting.");
+    starting = true;
+    try {
+      const profile = requireSession();
+      const queue = new UploadQueue(
+        path.join(app.getPath("userData"), "upload-queue"),
+        profile.roll_number,
+        createSender(() => console.error("[sync] session rejected by server")),
+      );
+      await queue.init();
+      // Deliver anything left from last time (a quit, a finish) BEFORE asking the server, so a student who quit
+      // while offline is told so now instead of being let back in.
+      await withTimeout(queue.flush(), 4000, "flush timed out").catch(() => undefined);
 
-    // the written part needs a single screen; the practical part may use a second one
-    if (config.monitoring_enabled) await assertEnvironmentClean(config.stage === "written");
+      const config = await api.startExam(examId);
 
-    // A working camera is a precondition when the teacher requires it; the first shot doubles as the identity photo.
-    const webcam = new WebcamCapturer();
-    let identityPhoto: Buffer | undefined;
-    if (config.monitoring_enabled && config.webcam_enabled) {
-      try {
-        await requestCameraAccess();
-        identityPhoto = await webcam.capture();
-      } catch (err) {
-        webcam.dispose();
-        throw new Error(`This exam requires your webcam. ${(err as Error).message}.`);
+      // the written part needs a single screen; the practical part may use a second one
+      if (config.monitoring_enabled) {
+        await assertEnvironmentClean(config.stage === "written");
+        await ensureScreenPermission();
       }
+
+      // A working camera is a precondition when the teacher requires it; the first shot doubles as the identity photo.
+      const webcam = new WebcamCapturer();
+      let identityPhoto: Buffer | undefined;
+      if (config.monitoring_enabled && config.webcam_enabled) {
+        try {
+          await requestCameraAccess();
+          identityPhoto = await webcam.capture();
+        } catch (err) {
+          webcam.dispose();
+          throw new Error(`This exam requires your webcam. ${(err as Error).message}.`);
+        }
+      }
+
+      // Consent was captured on the first screen; record it now that we know who/what.
+      await api.postConsent(examId, consentTimestamp ?? new Date().toISOString());
+
+      activeQueue = queue;
+      launchStage(examId, config, queue, webcam, identityPhoto);
+      launcherWindow?.close();
+    } finally {
+      starting = false;
     }
-
-    // Consent was captured on the first screen; record it now that we know who/what.
-    await api.postConsent(examId, consentTimestamp ?? new Date().toISOString());
-
-    const queue = new UploadQueue(
-      path.join(app.getPath("userData"), "upload-queue"),
-      profile.roll_number,
-      createSender(() => console.error("[sync] session rejected by server")),
-    );
-    await queue.init();
-    launchStage(examId, config, queue, webcam, identityPhoto);
-    launcherWindow?.close();
   });
 }
 
@@ -213,4 +232,9 @@ app.whenReady().then(() => {
   createLauncherWindow();
 });
 
-app.on("window-all-closed", () => app.quit());
+// Before quitting, give the last events (finished, quit, ...) a few seconds to reach the server. Anything that
+// doesn't make it stays on disk and is delivered, and applied, at the start of the student's next exam.
+app.on("window-all-closed", () => {
+  const drained = activeQueue ? withTimeout(activeQueue.flush(), 8000, "drain timed out").catch(() => undefined) : Promise.resolve();
+  void drained.then(() => app.quit());
+});

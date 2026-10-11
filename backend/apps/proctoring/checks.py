@@ -14,3 +14,16 @@ def email_backend_check(app_configs, **kwargs):
             )
         ]
     return []
+
+
+@checks.register()
+def secret_key_check(app_configs, **kwargs):
+    if not settings.DEBUG and settings.SECRET_KEY.startswith("dev-only-insecure"):
+        return [
+            checks.Warning(
+                "DJANGO_SECRET_KEY is not set: sessions and signed data use the public development key.",
+                hint="Set a long random DJANGO_SECRET_KEY (and DJANGO_DEBUG=0, DJANGO_ALLOWED_HOSTS) on the server.",
+                id="proctoring.W002",
+            )
+        ]
+    return []

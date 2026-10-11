@@ -51,7 +51,7 @@ class IngestTests(IsolatedMixin, APITransactionTestCase):
         self.event(client_id=cid)
         other_client, _ = authed_client(make_student(roll="2", name="Bob", email="b@example.com"))
         res = other_client.post(
-            "/api/events/", {"exam_id": "math-101", "event_type": "x", "client_id": cid}, format="json"
+            "/api/events/", {"exam_id": "math-101", "event_type": "tab_switch", "client_id": cid}, format="json"
         )
         self.assertEqual(res.status_code, 409)
         self.assertEqual(ProctorEvent.objects.count(), 1)

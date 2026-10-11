@@ -1,0 +1,30 @@
+{% extends "proctoring/teacher/base.html" %}
+{% block title %}{{ exam.name }} · students{% endblock %}
+{% block content %}
+<p class="crumb"><a href="{% url 'teacher-monitor' exam.exam_id %}">← {{ exam.name }}</a></p>
+<h1>Students &amp; passwords</h1>
+<p class="muted">{% if exam.batch %}Batch {{ exam.batch }} · {{ rows|length }} student{{ rows|length|pluralize }}.{% else %}This exam has no batch yet; an administrator must set it.{% endif %}
+  A forgotten password gets a new random one, shown once. It also ends that student's current session.</p>
+<div class="card scroll" style="margin-top:16px">
+  <table>
+    <thead><tr><th>Roll</th><th>Student</th><th>Email</th><th>Account</th><th>This exam</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+      <tr>
+        <td>{{ row.student.roll_number }}</td>
+        <td>{{ row.student.name }}</td>
+        <td class="muted">{{ row.email|default:"–" }}</td>
+        <td>{% if not row.student.is_active %}<span class="pill ended">deactivated</span>{% elif row.activated %}<span class="pill online">has password</span>{% else %}<span class="pill review">no password yet</span>{% endif %}</td>
+        <td>{% if row.attempt %}{{ row.attempt.get_status_display }}{% else %}–{% endif %}</td>
+        <td>{% if row.student.is_active %}
+          <form method="post" action="{% url 'teacher-new-password' exam.exam_id row.student.pk %}" style="margin:0"
+                onsubmit="return confirm('Give {{ row.student.name|escapejs }} a new password? Their old password stops working and any current session ends.')">
+            {% csrf_token %}<button>New password</button></form>{% endif %}</td>
+      </tr>
+    {% empty %}
+      <tr><td colspan="6" class="empty">No students in this batch.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

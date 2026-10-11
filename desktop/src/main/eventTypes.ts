@@ -11,6 +11,7 @@ export const EventType = {
   BlockedAppDetected: "blocked_app_detected",
   WatchAppDetected: "watch_app_detected",
   CameraUnavailable: "camera_unavailable",
+  ScreenshotFailed: "screenshot_failed",
   ConnectionLost: "connection_lost",
   ConnectionRestored: "connection_restored",
   WrittenSubmitted: "written_submitted",

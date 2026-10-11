@@ -1,5 +1,7 @@
 import csv
 import io
+
+EXCEL_BOM = "\ufeff"  # without it Excel garbles Bangla and other non-English names in a UTF-8 CSV
 from datetime import timedelta
 
 from django.db.models import Count, Max
@@ -109,7 +111,7 @@ def summary_csv(exam: Exam) -> str:
             [safe_cell(v) for v in (r["roll_number"], r["name"], r["batch"], r["status"], r["started_at"], r["last_seen"], r["score"], r["flag"])]
             + [r["counts"].get(t, 0) for t in types]
         )
-    return out.getvalue()
+    return EXCEL_BOM + out.getvalue()
 
 
 def events_csv(exam: Exam) -> str:
@@ -118,7 +120,7 @@ def events_csv(exam: Exam) -> str:
     writer.writerow(["timestamp", "student", "event_type", "detail", "weight"])
     for e in ProctorEvent.objects.filter(exam=exam).order_by("timestamp").only("student", "event_type", "detail", "timestamp"):
         writer.writerow([e.timestamp.isoformat(), safe_cell(e.student), e.event_type, safe_cell(e.detail), scoring.weight(e.event_type)])
-    return out.getvalue()
+    return EXCEL_BOM + out.getvalue()
 
 
 def marks_csv(rows: list[dict]) -> str:
@@ -129,4 +131,4 @@ def marks_csv(rows: list[dict]) -> str:
     writer.writerow(marking.MARK_COLUMNS)
     for r in rows:
         writer.writerow([safe_cell(r[c]) for c in marking.MARK_COLUMNS])
-    return out.getvalue()
+    return EXCEL_BOM + out.getvalue()

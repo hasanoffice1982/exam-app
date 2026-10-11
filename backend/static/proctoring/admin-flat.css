@@ -60,3 +60,7 @@ textarea.vLargeTextField, textarea.form-control { width: 100% !important; max-wi
 #jazzy-actions .btn, .submit-row .btn, .card-footer .btn, .col-lg-3 .btn { white-space: normal !important; text-align: center; }
 .form-group label { font-weight: 600; }
 .help-block, .form-text, small.help { color: #5f7a76; }
+
+/* teachers as a tidy checkbox list */
+#id_teachers { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 22px; }
+#id_teachers li label { display: flex; gap: 8px; align-items: center; margin: 0; font-weight: 500; }

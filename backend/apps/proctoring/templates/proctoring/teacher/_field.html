@@ -1,0 +1,9 @@
+<div class="field">
+  {% if field.field.widget.input_type == "checkbox" %}
+    <label style="display:flex;gap:10px;align-items:center;font-weight:600">{{ field }} {{ field.label }}</label>
+  {% else %}
+    {{ field.label_tag }} {{ field }}
+  {% endif %}
+  {% if field.help_text %}<div class="muted">{{ field.help_text }}</div>{% endif %}
+  {{ field.errors }}
+</div>

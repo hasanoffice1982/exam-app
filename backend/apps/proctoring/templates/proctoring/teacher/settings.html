@@ -5,20 +5,35 @@
 <h1>Exam settings</h1>
 <p class="muted">{{ exam.name }} · batch {{ exam.batch|default:"not set" }}. Times are in {{ time_zone }}. The name, batch and teachers are changed by an administrator.</p>
 {% if saved %}<p class="pill online" style="margin:12px 0">Saved</p>{% endif %}
-<form method="post" class="card pad" style="margin-top:14px;max-width:760px">
+<form method="post" style="margin-top:16px">
   {% csrf_token %}
   {{ form.non_field_errors }}
-  {% for field in form %}
-    <div class="field">
-      {% if field.field.widget.input_type == "checkbox" %}
-        <label style="display:flex;gap:10px;align-items:center;font-weight:600">{{ field }} {{ field.label }}</label>
-      {% else %}
-        {{ field.label_tag }} {{ field }}
-      {% endif %}
-      {% if field.help_text %}<div class="muted">{{ field.help_text }}</div>{% endif %}
-      {{ field.errors }}
-    </div>
-  {% endfor %}
-  <button type="submit" class="primary">Save settings</button>
+  <div class="settings-grid">
+    <section class="card pad">
+      <h2>Written part</h2>
+      {% include "proctoring/teacher/_field.html" with field=form.written_enabled %}
+      {% include "proctoring/teacher/_field.html" with field=form.form_url %}
+    </section>
+    <section class="card pad">
+      <h2>Practical part</h2>
+      {% include "proctoring/teacher/_field.html" with field=form.practical_enabled %}
+      {% include "proctoring/teacher/_field.html" with field=form.practical_instructions %}
+      {% include "proctoring/teacher/_field.html" with field=form.practical_url %}
+      {% include "proctoring/teacher/_field.html" with field=form.practical_screenshot_seconds %}
+    </section>
+    <section class="card pad">
+      <h2>Schedule</h2>
+      {% include "proctoring/teacher/_field.html" with field=form.starts_at %}
+      {% include "proctoring/teacher/_field.html" with field=form.ends_at %}
+      {% include "proctoring/teacher/_field.html" with field=form.grace_seconds %}
+    </section>
+    <section class="card pad">
+      <h2>Monitoring &amp; webcam</h2>
+      {% include "proctoring/teacher/_field.html" with field=form.monitoring_enabled %}
+      {% include "proctoring/teacher/_field.html" with field=form.webcam_enabled %}
+      {% include "proctoring/teacher/_field.html" with field=form.webcam_interval_seconds %}
+    </section>
+  </div>
+  <button type="submit" class="primary" style="margin-top:16px;padding:10px 22px">Save settings</button>
 </form>
 {% endblock %}

@@ -13,6 +13,7 @@ EVENT_LABELS = {
     E.BLOCKED_APP_DETECTED: "Screen-share/remote/recording app",
     E.WATCH_APP_DETECTED: "Chat/meeting app running",
     E.CAMERA_UNAVAILABLE: "Camera unavailable or covered",
+    E.SCREENSHOT_FAILED: "Screenshot could not be taken",
     E.CONNECTION_LOST: "Connection lost",
     E.CONNECTION_RESTORED: "Connection restored",
     E.WRITTEN_SUBMITTED: "Submitted the written part",
@@ -36,6 +37,7 @@ WEIGHTS = {
     E.BLOCKED_APP_DETECTED: 3,
     E.WATCH_APP_DETECTED: 1,
     E.CAMERA_UNAVAILABLE: 2,
+    E.SCREENSHOT_FAILED: 1,
 }
 
 REVIEW_AT = 1

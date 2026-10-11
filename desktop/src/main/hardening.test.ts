@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { classifyShortcut, isAllowedUrl, isFormSubmissionUrl, KeyInput } from "./hardening";
+import { classifyShortcut, isAllowedUrl, isFormSubmissionUrl, KeyInput, shouldRetryLoad } from "./hardening";
 
 const press = (key: string, mods: Partial<KeyInput> = {}): KeyInput => ({
   type: "keyDown",
@@ -97,4 +97,14 @@ test("a Google Form submission is recognised, other pages are not", () => {
   ];
   for (const url of yes) assert.equal(isFormSubmissionUrl(url), true, url);
   for (const url of no) assert.equal(isFormSubmissionUrl(url), false, url);
+});
+
+test("the form is retried only when its first load fails", () => {
+  const fail = { errorCode: -106, isMainFrame: true, loadedOnce: false }; // -106 = internet disconnected
+  assert.equal(shouldRetryLoad(fail), true);
+  assert.equal(shouldRetryLoad({ ...fail, errorCode: -105 }), true); // DNS
+  assert.equal(shouldRetryLoad({ ...fail, errorCode: -7 }), true); // timeout
+  assert.equal(shouldRetryLoad({ ...fail, errorCode: -3 }), false); // we aborted it ourselves
+  assert.equal(shouldRetryLoad({ ...fail, isMainFrame: false }), false); // an image or iframe failed
+  assert.equal(shouldRetryLoad({ ...fail, loadedOnce: true }), false); // after the form showed: never reload a possible submission
 });

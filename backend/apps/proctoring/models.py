@@ -40,7 +40,7 @@ class Student(models.Model):
     def batch_change_error(self) -> str | None:
         """Batches only move forward (81 -> 82 or 85, never 95 -> 94). First assignment is free."""
         before = self._loaded_batch
-        if self._state.adding or before is None or self.batch == before:
+        if self._state.adding or before is None or self.batch == before or getattr(self, "_allow_batch_correction", False):
             return None
         if self.batch is None or self.batch < before:
             return f"Batch can only move forward (currently {before})."
@@ -58,10 +58,12 @@ class Student(models.Model):
             raise ValidationError({"batch": error})
         moved = not self._state.adding and self.batch != self._loaded_batch
         previous = self._loaded_batch
+        lowered = moved and previous is not None and (self.batch is None or self.batch < previous)
         super().save(*args, **kwargs)
         if moved:
             BatchChange.objects.create(
-                student=self, from_batch=previous, to_batch=self.batch, changed_by=getattr(self, "_changed_by", "")
+                student=self, from_batch=previous, to_batch=self.batch,
+                changed_by=getattr(self, "_changed_by", "") + (" (correction)" if lowered else ""),
             )
         self._loaded_batch = self.batch
 
