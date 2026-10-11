@@ -20,7 +20,7 @@ class ProfileTests(IsolatedMixin, APITestCase):
         self.assertEqual(set(res.data), {"roll_number", "name", "email", "batch"})
 
     def test_students_without_batch_or_email(self):
-        client, _ = authed_client(make_student(email=""))
+        client, _ = authed_client(make_student(email="", batch=None))
         data = client.get("/api/profile/").data
         self.assertEqual((data["batch"], data["email"]), (None, ""))
 

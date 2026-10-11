@@ -15,10 +15,13 @@ EVENT_LABELS = {
     E.CAMERA_UNAVAILABLE: "Camera unavailable or covered",
     E.CONNECTION_LOST: "Connection lost",
     E.CONNECTION_RESTORED: "Connection restored",
+    E.WRITTEN_SUBMITTED: "Submitted the written part",
+    E.EXAM_FINISHED: "Finished the exam",
     E.EXAM_QUIT: "Quit the exam",
     E.TIME_UP: "Time ran out",
     E.FORCE_ENDED: "Ended by teacher",
     E.EXAM_RESUMED: "Reopened the exam (restart)",
+    E.STAGE_ADVANCED: "Moved to the practical part",
     E.TIME_EXTENDED: "Teacher gave extra time",
 }
 

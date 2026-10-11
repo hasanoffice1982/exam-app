@@ -11,5 +11,5 @@ test("client event names match the backend's EventType (except the server-only o
   const client = new Set<string>(Object.values(EventType));
 
   assert.deepEqual([...client].filter((v) => !server.has(v)), [], "client sends an event the server doesn't know");
-  assert.deepEqual([...server].filter((v) => !client.has(v)).sort(), ["exam_resumed", "force_ended", "time_extended"], "server has events the client lacks");
+  assert.deepEqual([...server].filter((v) => !client.has(v)).sort(), ["exam_resumed", "force_ended", "stage_advanced", "time_extended"], "server has events the client lacks");
 });

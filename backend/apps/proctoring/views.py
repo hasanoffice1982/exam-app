@@ -5,7 +5,6 @@ import logging
 from datetime import timedelta
 
 from django.db import IntegrityError
-from django.db.models import Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import mixins, serializers, status, viewsets
@@ -138,14 +137,15 @@ class HeartbeatView(APIView):
 
 
 class ExamListView(ListAPIView):
-    """Only exams for the student's batch (or open to all batches)."""
+    """Only exams assigned to the student's own batch."""
 
     serializer_class = ExamListSerializer
     permission_classes = [IsStudent]
     pagination_class = None
 
     def get_queryset(self):
-        return Exam.objects.filter(Q(batch__isnull=True) | Q(batch=self.request.user.batch))
+        batch = self.request.user.batch
+        return Exam.objects.filter(batch=batch, archived=False) if batch is not None else Exam.objects.none()
 
 
 def exam_for_student(request, exam_id: str) -> Exam:
@@ -153,21 +153,24 @@ def exam_for_student(request, exam_id: str) -> Exam:
     exam = get_object_or_404(Exam, exam_id=exam_id)
     if not exam.is_open_to(request.user):
         raise PermissionDenied("This exam is not assigned to your batch.")
+    if exam.archived:
+        raise PermissionDenied("This exam has been archived.")
     return exam
 
 
-def config_for(exam: Exam, student, extra_minutes: int | None = None) -> dict:
-    """The exam config as this student sees it: their own deadline and status (extra time included)."""
-    if extra_minutes is None:  # timed exams need the attempt for the student's extra time; untimed ones don't
-        extra_minutes = (
-            ExamAttempt.objects.filter(exam=exam, student=student).values_list("extra_minutes", flat=True).first() or 0
-            if exam.ends_at
-            else 0
-        )
+def config_for(exam: Exam, student, attempt: ExamAttempt | None = None) -> dict:
+    """The exam config as this student sees it: their own deadline, status and current stage.
+
+    Costs one query for the student's attempt unless the caller already has it.
+    """
+    if attempt is None:
+        attempt = ExamAttempt.objects.filter(exam=exam, student=student).only("extra_minutes", "stage").first()
+    extra_minutes = attempt.extra_minutes if attempt else 0
     data = ExamConfigSerializer(exam).data
     if exam.ends_at and extra_minutes:
         data["ends_at"] = serializers.DateTimeField().to_representation(exam.ends_at + timedelta(minutes=extra_minutes))
     data["status"] = exam.status_with_extra(extra_minutes)
+    data["stage"] = attempt.stage if attempt else exam.first_stage
     return data
 
 
@@ -213,14 +216,35 @@ class ExamStartView(APIView):
         created = attempt is None
         if attempt is None:
             try:
-                attempt = ExamAttempt.objects.create(student=request.user, exam=exam)
+                attempt = ExamAttempt.objects.create(student=request.user, exam=exam, stage=exam.first_stage)
             except IntegrityError:  # two windows racing: the other one won
                 attempt = ExamAttempt.objects.get(student=request.user, exam=exam)
         if attempt.status != ExamAttempt.Status.IN_PROGRESS:
             raise PermissionDenied(ATTEMPT_ENDED_MESSAGES[attempt.status])
         if not created:  # reopening after a crash/restart is allowed, but leaves a trace for the teacher
             ProctorEvent.objects.create(student=request.user.label, exam=exam, event_type=EventType.EXAM_RESUMED)
-        return Response(config_for(exam, request.user, extra))
+        return Response(config_for(exam, request.user, attempt))
+
+
+class ExamAdvanceView(APIView):
+    """Written part done -> practical part. One way only; repeating the call is harmless."""
+
+    permission_classes = [IsStudent]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "heartbeat"
+
+    def post(self, request, exam_id: str) -> Response:
+        exam = exam_for_student(request, exam_id)
+        attempt = ExamAttempt.objects.filter(student=request.user, exam=exam).first()
+        if attempt is None:
+            raise PermissionDenied("Start the exam first.")
+        if attempt.status != ExamAttempt.Status.IN_PROGRESS:
+            raise PermissionDenied(ATTEMPT_ENDED_MESSAGES[attempt.status])
+        if attempt.stage == ExamAttempt.Stage.WRITTEN:
+            if not exam.practical_enabled:
+                return Response({"detail": "This exam has no practical part."}, status=status.HTTP_400_BAD_REQUEST)
+            services.advance_to_practical(attempt, "student")
+        return Response(config_for(exam, request.user, attempt))
 
 
 class StudentCreateViewSet(mixins.CreateModelMixin, viewsets.GenericViewSet):
@@ -269,7 +293,11 @@ class ConsentViewSet(StudentCreateViewSet):
 
 
 # Events that close the student's attempt (only these cost an extra query).
-ATTEMPT_ENDING_EVENTS = {EventType.EXAM_QUIT: ExamAttempt.Status.QUIT, EventType.TIME_UP: ExamAttempt.Status.COMPLETED}
+ATTEMPT_ENDING_EVENTS = {
+    EventType.EXAM_QUIT: ExamAttempt.Status.QUIT,
+    EventType.TIME_UP: ExamAttempt.Status.COMPLETED,
+    EventType.EXAM_FINISHED: ExamAttempt.Status.COMPLETED,
+}
 
 
 class ProctorEventViewSet(IdempotentCreateMixin, StudentCreateViewSet):

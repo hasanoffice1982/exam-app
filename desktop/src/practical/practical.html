@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>Practical</title>
+    <style>
+      :root { --bg:#f1f6f5; --card:#fff; --text:#12302d; --muted:#5b7370; --brand:#0d9488; --line:#d7e5e2; --warn:#b45309; }
+      @media (prefers-color-scheme: dark) { :root { --bg:#0c1615; --card:#132120; --text:#e6f0ee; --muted:#93a8a4; --brand:#2dd4bf; --line:#223533; --warn:#fbbf24; } }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 20px; font: 15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
+      .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin-bottom: 14px; }
+      h1 { margin: 0 0 2px; font-size: 1.25rem; } .muted { color: var(--muted); font-size: .88rem; }
+      .timer { font-size: 2.2rem; font-weight: 700; font-variant-numeric: tabular-nums; margin: 4px 0; } .timer.low { color: var(--warn); }
+      #instructions { white-space: pre-wrap; margin: 0; max-height: 40vh; overflow: auto; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; }
+      button { font: inherit; font-weight: 600; padding: 9px 16px; border-radius: 9px; border: 1px solid var(--brand); background: var(--card); color: var(--brand); cursor: pointer; }
+      button.primary { background: var(--brand); color: #fff; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1 id="exam-name">Practical</h1>
+      <div class="muted">Practical part. Work in your own apps; you may switch windows freely.</div>
+      <div class="timer" id="timer" aria-live="polite"></div>
+      <div class="muted" id="note"></div>
+    </div>
+    <div class="card" id="instructions-card" hidden>
+      <strong>Instructions</strong>
+      <p id="instructions"></p>
+    </div>
+    <div class="row">
+      <button id="open-link" hidden>Open task link</button>
+      <button id="finish" class="primary">Finish practical</button>
+    </div>
+    <script src="practical.js"></script>
+  </body>
+</html>

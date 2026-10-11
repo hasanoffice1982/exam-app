@@ -5,13 +5,13 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.cache import cache
 from django.core.mail import send_mail
-from django.db.models import F
+from django.db.models import F, Q
 from django.db.models.functions import Least
 from django.utils import timezone
 
 from .authentication import hash_token
 from .event_types import EventType
-from .models import ExamAttempt, ProctorEvent, Student, StudentToken
+from .models import AuditEntry, Exam, ExamAttempt, ProctorEvent, ProctorScreenshot, Student, StudentToken
 
 logger = logging.getLogger(__name__)
 
@@ -210,3 +210,108 @@ def add_extra_time(attempts, minutes: int, by_username: str) -> int:
         for a in rows
     )
     return len(rows)
+
+
+def advance_to_practical(attempt: ExamAttempt, by: str) -> None:
+    """written -> practical for one attempt, logged. Callers have checked the exam has a practical part."""
+    updated = ExamAttempt.objects.filter(pk=attempt.pk, stage=ExamAttempt.Stage.WRITTEN).update(stage=ExamAttempt.Stage.PRACTICAL)
+    if updated:  # a double click / retry must not log twice
+        attempt.stage = ExamAttempt.Stage.PRACTICAL
+        ProctorEvent.objects.create(
+            student=attempt.student.label, exam_id=attempt.exam_id, event_type=EventType.STAGE_ADVANCED, detail=f"written->practical by {by}"[:200]
+        )
+
+
+def advance_attempts(attempts, by_username: str) -> int:
+    """Teacher failsafe: move students still in the written part to the practical part."""
+    rows = list(
+        attempts.filter(status=ExamAttempt.Status.IN_PROGRESS, stage=ExamAttempt.Stage.WRITTEN, exam__practical_enabled=True)
+        .select_related("student")
+    )
+    for attempt in rows:
+        advance_to_practical(attempt, by_username)
+    return len(rows)
+
+
+# ---- archive, evidence retention, deactivation -------------------------------------------------
+
+
+class RuleError(Exception):
+    """A refused action with a message the teacher or admin can act on."""
+
+
+def _audit(exam: Exam, action: str, by: str, detail: str = "") -> None:
+    AuditEntry.objects.create(exam=exam, exam_label=f"{exam.name} ({exam.exam_id})", action=action, detail=detail[:300], performed_by=by)
+
+
+def archive_exam(exam: Exam, by: str) -> None:
+    """Hide a finished exam from students and the default lists. Refused while anyone is still taking it."""
+    in_progress = ExamAttempt.objects.filter(exam=exam, status=ExamAttempt.Status.IN_PROGRESS).count()
+    if in_progress:
+        raise RuleError(f"{in_progress} student(s) are still in progress. End or finish their attempts before archiving.")
+    exam.archived = True
+    exam.archived_at = timezone.now()
+    exam.save(update_fields=["archived", "archived_at"])
+    _audit(exam, "archived", by)
+
+
+def unarchive_exam(exam: Exam, by: str) -> None:
+    exam.archived = False
+    exam.archived_at = None
+    exam.save(update_fields=["archived", "archived_at"])
+    _audit(exam, "unarchived", by)
+
+
+def evidence_summary(exam: Exam) -> tuple[int, int]:
+    """(number of images, total bytes) that deleting the exam's screenshots and webcam photos would free."""
+    shots = ProctorScreenshot.objects.filter(exam=exam)
+    total = 0
+    for shot in shots.only("file"):
+        try:
+            total += shot.file.size
+        except (FileNotFoundError, ValueError):
+            pass
+    return shots.count(), total
+
+
+def can_delete_evidence(exam: Exam) -> bool:
+    """Only once nobody can still add to it: the exam is archived or its time is over."""
+    return exam.archived or exam.status == "closed"
+
+
+def delete_evidence(exam: Exam, by: str, reason: str = "") -> tuple[int, int]:
+    """Deletes every screenshot and webcam photo of an exam (rows and files). The event log and marks stay."""
+    if not can_delete_evidence(exam):
+        raise RuleError("Screenshots can only be deleted after the exam has ended or been archived.")
+    count, size = evidence_summary(exam)
+    for shot in ProctorScreenshot.objects.filter(exam=exam):
+        shot.file.delete(save=False)  # the file; a missing file is fine
+        shot.delete()
+    _audit(exam, "evidence deleted", by, f"{count} image(s), {size // 1024} KB{'; ' + reason if reason else ''}")
+    return count, size
+
+
+def _ended_before(cutoff):
+    return Q(ends_at__lt=cutoff) | Q(archived=True, archived_at__lt=cutoff)
+
+
+def purge_old_evidence(older_than_days: int, by: str = "purge_evidence", dry_run: bool = False) -> list[tuple[Exam, int]]:
+    """Retention sweep: evidence of exams that ended (or were archived) more than N days ago."""
+    cutoff = timezone.now() - timedelta(days=older_than_days)
+    done = []
+    for exam in Exam.objects.filter(_ended_before(cutoff)).distinct():
+        count = ProctorScreenshot.objects.filter(exam=exam).count()
+        if not count:
+            continue
+        if not dry_run:
+            delete_evidence(exam, by, f"retention {older_than_days} days")
+        done.append((exam, count))
+    return done
+
+
+def deactivate_students(students, by: str) -> int:
+    """Graduated or finished students: no more logins, sessions revoked. Their records are kept."""
+    ids = list(students.filter(is_active=True).values_list("pk", flat=True))
+    Student.objects.filter(pk__in=ids).update(is_active=False)
+    StudentToken.objects.filter(student_id__in=ids).delete()
+    return len(ids)

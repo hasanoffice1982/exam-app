@@ -6,9 +6,10 @@ from django.core.management import call_command
 from django.test import TestCase
 from rest_framework.test import APITestCase
 
-from apps.proctoring.models import BatchChange, Student
+from apps.proctoring.models import BatchChange, Exam, Student
 
 from .helpers import IsolatedMixin, authed_client, make_exam, make_student
+from .test_dashboard import DashboardBase
 
 
 class BatchRuleTests(TestCase):
@@ -131,30 +132,39 @@ class CsvImportTests(TestCase):
 
 
 class ExamEligibilityTests(IsolatedMixin, APITestCase):
+    """Every exam belongs to exactly one batch; nobody else sees it, and there is no "all batches"."""
+
     def setUp(self):
         super().setUp()
         make_exam("batch81", batch=81)
         make_exam("batch82", batch=82)
-        make_exam("everyone")
+        make_exam("nobatch", batch=None)  # legacy row: not assigned yet
 
     def ids(self, client):
         return sorted(e["exam_id"] for e in client.get("/api/exams/").data)
 
-    def test_students_only_see_their_batch_and_open_exams(self):
+    def test_students_only_see_their_own_batchs_exams(self):
         c81, _ = authed_client(make_student(roll="1", batch=81))
         c82, _ = authed_client(make_student(roll="2", batch=82))
-        self.assertEqual(self.ids(c81), ["batch81", "everyone"])
-        self.assertEqual(self.ids(c82), ["batch82", "everyone"])
+        self.assertEqual(self.ids(c81), ["batch81"])
+        self.assertEqual(self.ids(c82), ["batch82"])
 
-    def test_student_without_batch_only_sees_open_to_all(self):
-        client, _ = authed_client(make_student(roll="3"))
-        self.assertEqual(self.ids(client), ["everyone"])
+    def test_exams_without_a_batch_are_invisible_to_everyone(self):
+        for roll, batch in (("1", 81), ("2", 82), ("3", None)):
+            client, _ = authed_client(make_student(roll=roll, batch=batch))
+            self.assertNotIn("nobatch", self.ids(client))
 
-    def test_other_batch_exam_config_is_forbidden(self):
+    def test_student_without_a_batch_sees_nothing(self):
+        client, _ = authed_client(make_student(roll="3", batch=None))
+        self.assertEqual(self.ids(client), [])
+
+    def test_other_batch_and_unassigned_exams_are_forbidden(self):
         client, _ = authed_client(make_student(batch=81))
         self.assertEqual(client.get("/api/config/batch81/").status_code, 200)
-        self.assertEqual(client.get("/api/config/batch82/").status_code, 403)
-        self.assertEqual(client.post("/api/exams/batch82/start/").status_code, 403)
+        for other in ("batch82", "nobatch"):
+            self.assertEqual(client.get(f"/api/config/{other}/").status_code, 403, other)
+            self.assertEqual(client.post(f"/api/exams/{other}/start/").status_code, 403, other)
+            self.assertEqual(client.post(f"/api/exams/{other}/advance/").status_code, 403, other)
 
     def test_batch_move_changes_visible_exams(self):
         student = make_student(batch=81)
@@ -162,9 +172,57 @@ class ExamEligibilityTests(IsolatedMixin, APITestCase):
         student = Student.objects.get(pk=student.pk)
         student.batch = 82
         student.save()
-        self.assertEqual(self.ids(client), ["batch82", "everyone"])
+        self.assertEqual(self.ids(client), ["batch82"])
 
     def test_exam_list_query_count(self):
         client, _ = authed_client(make_student(batch=81))
         with self.assertNumQueries(2):
             client.get("/api/exams/")
+
+
+class ExamBatchAdminTests(TestCase):
+    def setUp(self):
+        self.admin = get_user_model().objects.create_superuser("root", "r@example.com", "pw")
+        self.client.force_login(self.admin)
+
+    def add(self, **extra):
+        data = {"exam_id": "new-exam", "name": "New", "form_url": "https://example.com/form", "written_enabled": "on",
+                "practical_screenshot_seconds": 60, "webcam_interval_seconds": 180, "grace_seconds": 3, "monitoring_enabled": "on",
+                **extra}
+        return self.client.post("/admin/proctoring/exam/add/", data)
+
+    def test_admin_refuses_an_exam_without_a_batch(self):
+        res = self.add()
+        self.assertEqual(res.status_code, 200)  # form redisplayed with an error
+        self.assertContains(res, "This field is required")
+        self.assertFalse(Exam.objects.filter(exam_id="new-exam").exists())
+
+    def test_admin_accepts_an_exam_with_a_batch(self):
+        self.assertEqual(self.add(batch=81).status_code, 302)
+        self.assertEqual(Exam.objects.get(exam_id="new-exam").batch, 81)
+
+
+class TeacherExamListGroupingTests(DashboardBase):
+    def test_exams_are_grouped_by_batch_in_order(self):
+        from apps.proctoring.models import Exam as ExamModel
+
+        ExamModel.objects.filter(pk=self.math.pk).update(batch=82)
+        three = make_exam("math-201", name="Math 201", batch=81)
+        three.teachers.add(get_user_model().objects.get(username="mathteacher"))
+        html = self.as_user("mathteacher").get("/teacher/").content.decode()
+        self.assertLess(html.index("Batch 81"), html.index("Batch 82"))
+        self.assertLess(html.index("Math 201"), html.index("Mathematics"))  # 81 group before the 82 group
+        self.assertNotIn("All batches", html)
+
+    def test_exams_without_a_batch_get_a_warning_group_first(self):
+        from apps.proctoring.models import Exam as ExamModel
+
+        ExamModel.objects.filter(pk=self.math.pk).update(batch=None)
+        html = self.as_user("mathteacher").get("/teacher/").content.decode()
+        self.assertIn("No batch set", html)
+        self.assertIn("students cannot see these", html)
+
+    def test_a_teacher_only_sees_their_own_batches_exams(self):
+        html = self.as_user("physteacher").get("/teacher/").content.decode()
+        self.assertIn("physics-101", html)
+        self.assertNotIn("math-101", html)

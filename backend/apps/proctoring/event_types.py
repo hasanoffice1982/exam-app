@@ -17,9 +17,12 @@ class EventType(StrEnum):
     CAMERA_UNAVAILABLE = "camera_unavailable"
     CONNECTION_LOST = "connection_lost"
     CONNECTION_RESTORED = "connection_restored"
+    WRITTEN_SUBMITTED = "written_submitted"
+    EXAM_FINISHED = "exam_finished"
     EXAM_QUIT = "exam_quit"
     TIME_UP = "time_up"
     # written by the server, never sent by clients:
     FORCE_ENDED = "force_ended"
     EXAM_RESUMED = "exam_resumed"
+    STAGE_ADVANCED = "stage_advanced"
     TIME_EXTENDED = "time_extended"

@@ -1,11 +1,12 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.urls import reverse
 from django.utils.html import format_html
 
 from . import services
 from .sheets import password_sheet_response
 from .models import (
+    AuditEntry,
     BatchChange,
     Consent,
     Exam,
@@ -17,34 +18,11 @@ from .models import (
 )
 
 
-# ---- teacher scoping -------------------------------------------------------------------------
-# Superusers see everything. Teachers (staff in the "Teachers" group) only see data of exams
-# that list them in Exam.teachers; objects outside that set 404 in the admin.
+# The admin site is for administrators (superusers) only. Teachers never log in here: they use the teacher
+# dashboard (/teacher/), which has its own login and only shows their own exams.
 
 
-class ExamFilter(admin.SimpleListFilter):
-    title = "exam"
-    parameter_name = "exam_slug"
-
-    def lookups(self, request, model_admin):
-        exams = Exam.objects.all() if request.user.is_superuser else Exam.objects.filter(teachers=request.user)
-        return [(e.exam_id, e.name) for e in exams]
-
-    def queryset(self, request, queryset):
-        return queryset.filter(exam__exam_id=self.value()) if self.value() else queryset
-
-
-class TeacherScopedAdmin(admin.ModelAdmin):
-    exam_lookup = "exam"  # path from the model to its Exam
-
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-        return qs.filter(**{f"{self.exam_lookup}__teachers": request.user}).distinct()
-
-
-class ReadOnlyLogAdmin(TeacherScopedAdmin):
+class ReadOnlyLogAdmin(admin.ModelAdmin):
     """Evidence tables: nobody edits or adds rows by hand."""
 
     list_select_related = ("exam",)
@@ -56,35 +34,35 @@ class ReadOnlyLogAdmin(TeacherScopedAdmin):
         return False
 
 
-# ---- exams -----------------------------------------------------------------------------------
-
-
 @admin.register(Exam)
 class ExamAdmin(admin.ModelAdmin):
-    list_display = ("exam_id", "name", "batch", "mode", "monitoring_enabled", "starts_at", "ends_at", "status")
+    list_display = ("exam_id", "name", "batch", "written_enabled", "practical_enabled", "monitoring_enabled", "starts_at", "ends_at", "status")
+    list_filter = ("archived", "batch")
     list_editable = ("monitoring_enabled",)
     search_fields = ("exam_id", "name")
     filter_horizontal = ("teachers",)
-    TEACHER_READONLY = ("exam_id", "name", "batch", "mode", "teachers")
+    actions = ["archive_selected", "unarchive_selected"]
 
-    def get_queryset(self, request):
-        qs = super().get_queryset(request)
-        return qs if request.user.is_superuser else qs.filter(teachers=request.user)
+    @admin.action(description="Archive selected exams (hide from students and default lists)")
+    def archive_selected(self, request, queryset):
+        for exam in queryset:
+            try:
+                services.archive_exam(exam, request.user.username)
+                self.message_user(request, f"Archived {exam.name}.")
+            except services.RuleError as e:
+                self.message_user(request, f"{exam.name}: {e}", level=messages.ERROR)
 
-    def get_readonly_fields(self, request, obj=None):
-        return () if request.user.is_superuser else self.TEACHER_READONLY
-
-    def has_add_permission(self, request):
-        return request.user.is_superuser and super().has_add_permission(request)
-
-    def has_delete_permission(self, request, obj=None):
-        return request.user.is_superuser and super().has_delete_permission(request, obj)
+    @admin.action(description="Unarchive selected exams")
+    def unarchive_selected(self, request, queryset):
+        for exam in queryset.filter(archived=True):
+            services.unarchive_exam(exam, request.user.username)
+        self.message_user(request, "Unarchived.")
 
 
 @admin.register(ExamAttempt)
-class ExamAttemptAdmin(TeacherScopedAdmin):
-    list_display = ("student", "exam", "status", "started_at", "ended_at", "last_seen")
-    list_filter = (ExamFilter, "status")
+class ExamAttemptAdmin(admin.ModelAdmin):
+    list_display = ("student", "exam", "stage", "status", "started_at", "ended_at", "last_seen")
+    list_filter = ("exam", "status")
     search_fields = ("student__roll_number", "student__name")
     list_select_related = ("exam", "student", "student__token")
     actions = ["force_end", "reset_attempt"]
@@ -116,14 +94,14 @@ class ExamAttemptAdmin(TeacherScopedAdmin):
 @admin.register(Consent)
 class ConsentAdmin(ReadOnlyLogAdmin):
     list_display = ("student", "exam", "timestamp")
-    list_filter = (ExamFilter,)
+    list_filter = ("exam",)
     search_fields = ("student",)
 
 
 @admin.register(ProctorEvent)
 class ProctorEventAdmin(ReadOnlyLogAdmin):
     list_display = ("student", "exam", "event_type", "detail", "timestamp")
-    list_filter = (ExamFilter, "event_type")
+    list_filter = ("exam", "event_type")
     search_fields = ("student",)
     date_hierarchy = "timestamp"
 
@@ -131,7 +109,7 @@ class ProctorEventAdmin(ReadOnlyLogAdmin):
 @admin.register(ProctorScreenshot)
 class ProctorScreenshotAdmin(ReadOnlyLogAdmin):
     list_display = ("student", "exam", "kind", "timestamp", "preview")
-    list_filter = (ExamFilter, "kind")
+    list_filter = ("exam", "kind")
     search_fields = ("student",)
     date_hierarchy = "timestamp"
     readonly_fields = ("preview",)
@@ -176,7 +154,21 @@ class StudentAdmin(admin.ModelAdmin):
     list_display = ("roll_number", "name", "batch", "email", "activated", "is_active")
     list_filter = ("batch", "is_active")
     search_fields = ("roll_number", "name")
-    actions = ["generate_passwords", "reset_activation"]
+    actions = ["generate_passwords", "reset_activation", "deactivate_selected", "reactivate_selected"]
+
+    def has_delete_permission(self, request, obj=None):
+        # a student must be deactivated first: stops accidental deletion of records someone may still need
+        return obj is None or not obj.is_active
+
+    @admin.action(description="Deactivate selected students (no more logins; records are kept)")
+    def deactivate_selected(self, request, queryset):
+        count = services.deactivate_students(queryset, request.user.username)
+        self.message_user(request, f"Deactivated {count} student(s) and ended their sessions.")
+
+    @admin.action(description="Reactivate selected students")
+    def reactivate_selected(self, request, queryset):
+        count = queryset.filter(is_active=False).update(is_active=True)
+        self.message_user(request, f"Reactivated {count} student(s).")
 
     @admin.display(boolean=True, description="Activated")
     def activated(self, obj: Student) -> bool:
@@ -210,4 +202,22 @@ class StudentTokenAdmin(admin.ModelAdmin):
     readonly_fields = ("student", "key_hash", "issued_at", "expires_at", "last_seen_at")
 
     def has_add_permission(self, request):
+        return False
+
+
+@admin.register(AuditEntry)
+class AuditEntryAdmin(admin.ModelAdmin):
+    """Read-only record of archives and evidence deletions."""
+
+    list_display = ("at", "action", "exam_label", "detail", "performed_by")
+    list_filter = ("action",)
+    search_fields = ("exam_label", "performed_by")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False

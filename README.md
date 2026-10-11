@@ -73,7 +73,7 @@ Handing out passwords yourself works without any email account:
 After login, the exam list has **My profile** (name, roll, batch, masked email) with **Change password** (current password required, new one at least 8 characters, different from the current one and not the roll number; 5 wrong current passwords lock it for 15 minutes) and **Log out** (revokes the session on the server).
 
 ## Teacher dashboard (`/teacher/`)
-Log in with your teacher account (same login page as `/admin/`); you only see exams assigned to you.
+Log in at `/teacher/login/` with your teacher account; you only see exams assigned to you.
 - **Live monitor** per exam: every student with online/offline state (online = heartbeat within 90 s), flag (clean / review / flagged), score, tab switches and last event. Refreshes every 10 s. Buttons: **End attempt** and **Allow restart**.
 - **Student timeline**: events and screenshots merged in time order.
 - **CSV export**: per-student summary and the full event log (cells starting with `=`, `+`, `-`, `@` are neutralised against spreadsheet formula injection).
@@ -82,14 +82,18 @@ Log in with your teacher account (same login page as `/admin/`); you only see ex
 - Use `/admin/` (superuser) for the back office: students, batches, exams, teacher assignment.
 
 ## Batches
-Each student has a **batch** number; each exam can be limited to one batch (empty = all batches). Students only see and can only start exams for their batch.
+Each student has a **batch** number, and **every exam belongs to exactly one batch** (required; there is no "all batches"). Students only see and can only start exams of their own batch. A student without a batch, or an exam without one, matches nothing. The teacher dashboard lists exams grouped by batch, with a warning group for exams that have no batch yet.
 Batches move **forward only** (81 -> 82 or 85, never 95 -> 94; first assignment is free). The rule is enforced in the model, in `/admin/` and in the CSV import (offending rows are skipped and reported). Every move is logged in the student's *Batch changes* table with who did it. Only superusers manage students and batches.
 
-## Teachers (per-subject access)
+## Teachers and administrators (two separate worlds)
+- **Administrators (super admin)** use `/admin/` (a flat, light teal Jazzmin theme: no shadows, no animation). They manage students, batches, exams, teacher accounts, sessions and evidence. The super admin can also open `/teacher/` with the same login and sees **every** exam there, but neither site links to the other.
+- **Teachers** use only `/teacher/` with their own login page (`/teacher/login/`). They are not staff, cannot log in to `/admin/`, and nothing in the teacher pages links to it. They see only the exams assigned to them. Five wrong passwords lock a username for 15 minutes.
 ```bash
 cd backend && python manage.py create_teacher mathteacher --exams math-101,physics-101   # prints a one-time password
 ```
-A teacher logs into `/admin/` and only sees the exams assigned to them (also editable by a superuser on the exam page: *Teachers*), plus those exams' attempts, events, screenshots and consents. They can change the exam's schedule, form URL, monitoring toggle and grace time, but not its batch, name or teacher list, and cannot add/delete exams or touch students, sessions or other subjects.
+(Re-running it adds exams and re-asserts "not staff".) Teachers can, in the dashboard: watch the live monitor, open timelines and screenshots, give extra time, end/reset attempts, move a student to the practical part, generate first-time passwords for their exam's batch, upload Google Form marks, download CSVs and edit **Exam settings** (form link, written/practical parts, practical instructions and link, screenshot interval, start/end time, grace seconds, monitoring, webcam). Name, batch and teacher list stay with administrators.
+- Times in the settings form use the server's `TIME_ZONE` (set the env var, e.g. `TIME_ZONE=Asia/Dhaka`; default UTC).
+- The admin theme's CSS lives in `backend/static/`; `runserver` serves it in development. For production run `collectstatic` and serve static files (WhiteNoise or the web server): part of deployment.
 
 ## Attempts, quitting and force-end
 Each student gets one **attempt** per exam, created when they begin. Resuming after a crash is fine. Quitting (`exam_quit`) or running out of time (`time_up`) closes it, and the student cannot re-enter.
@@ -119,6 +123,24 @@ Policy: quit the exam -> 0; ended by teacher -> blank; no form submission -> bla
 - Google Form answers survive only if the Form requires sign-in (Form settings: require sign-in / limit to 1 response): Google then keeps the respondent's progress as a draft and the student sees it again when they reopen the form while signed in. Anonymous forms lose partial answers. The app keeps the Google login between restarts. Test this on a sample form once.
 - The clock keeps running while a student is offline. Teachers give lost time back per student with **+10 min** on the live monitor (repeatable, max 480 min per student, logged as `time_extended`). It also reopens a student whose time had just run out; quit or teacher-ended attempts need **Allow restart**. A student's own deadline is returned by the config endpoint (one extra query on timed exams) and picked up within 2 minutes.
 
+## Written and practical parts
+Each exam has two switches in `/admin/` (teachers can edit them on their own exams): **Written part** (the Google Form) and **Practical part**. Turn on one or both. The order is fixed: **written first, then practical**, and a student is only ever in one part at a time.
+- **Written part:** the locked full-screen Google Form window with all the anti-cheat rules. When the student submits the form the app detects it (the form's `formResponse` page), logs `written_submitted`, and either finishes (written only) or shows "Start practical part".
+- **Practical part:** a normal, resizable window with the countdown, the teacher's instructions text and an optional task link. The student works in their own apps, so switching away is **not** a violation and nothing is blocked inside those apps. The app samples the screen where the student is working every ~`practical_screenshot_seconds` (default 60, 15-600, randomised +/-50%); webcam photos, heartbeat, blocked-app detection, extra time and offline queue all still apply. A second monitor is only logged. **Finish practical** (or closing the window) asks for confirmation and ends the exam; it is not counted as quitting.
+- **No way back:** once the practical part has started, the attempt resumes there after a crash and the written part cannot be reopened.
+- **Teacher failsafe:** on the live monitor, **To practical** moves a student on (the student's app switches within 2 minutes). The monitor shows each student's current part.
+- **Required settings:** the written part needs a form link; the practical part needs instructions text or a link; at least one part must be on.
+- Existing exams were migrated automatically (`form` -> written only, `practical` -> practical only).
+- Marks: the Google Form marks page works for the written part; practical work is marked by the teacher from the screenshots and timeline.
+
+## After the exam: archive, evidence retention, deactivation
+Nothing is deleted by accident, and every destructive step is recorded (`/admin/` -> Audit entries: who, what, when).
+- **Archive exam** (teacher: button on the live monitor; admin: action on Exams): hides a finished exam from students and from the teacher's default list. Refused while any student is still in progress. Archived exams stay fully readable (monitor, timelines, CSVs, marks) and can be unarchived. The teacher list has "Show N archived exams".
+- **Delete screenshots & photos** (teacher: on the monitor, admin: same page): removes every screenshot and webcam photo of one exam (files too), after typing the exam id to confirm. Only allowed once the exam has ended or been archived. The event log, scores, attempts and marks are kept, so disputes can still be judged from the timeline.
+- **Retention sweep**: `python manage.py purge_evidence --older-than-days 90 [--dry-run]` deletes the images of exams that ended (or were archived) more than N days ago. Running exams are never touched. Schedule it (cron/launchd) if you want automatic cleanup.
+- **Deactivate students** (admin: action on Students, or `python manage.py deactivate_batch 81 [--dry-run]`): no more logins and sessions end; records are kept and can be reactivated. A student must be deactivated before the admin can delete the record.
+- Suggested routine: finish marking -> download the CSVs -> archive the exam -> after the retention period delete the images -> deactivate the batch.
+
 ## Exam schedule
 Set **Starts at / Ends at** per exam in `/admin/` → Exams (empty = unrestricted). Students can only begin exams with status *open*; the exam window warns and closes automatically at the end time (server clock; changes made by the teacher are picked up within 2 minutes).
 
@@ -135,8 +157,9 @@ All endpoints need `Authorization: Bearer <token>` (issued by login/activate) ex
 | POST | `/api/auth/activate/` | `{roll_number, email, website}` -> profile + one-time `password` + `token` |
 | POST | `/api/heartbeat/` | called every 30 s by the exam window |
 | GET | `/api/exams/` | exams for the student's batch: `[{exam_id, name, starts_at, ends_at, status}]` |
+| POST | `/api/exams/<exam_id>/advance/` | written part done -> practical part (one way, idempotent) |
 | POST | `/api/exams/<exam_id>/start/` | begins/resumes the attempt, returns the config; 403 with a reason if not allowed |
-| GET | `/api/config/<exam_id>/` | `{monitoring_enabled, form_url, mode, starts_at, ends_at, grace_seconds, status, server_time}` |
+| GET | `/api/config/<exam_id>/` | `{name, monitoring_enabled, form_url, written_enabled, practical_enabled, practical_instructions, practical_url, practical_screenshot_seconds, stage, starts_at, ends_at, grace_seconds, webcam_*, status, server_time}` |
 | POST | `/api/config/<exam_id>/` | teacher write, header `X-Admin-Key` |
 | POST | `/api/consent/` | `{exam_id, timestamp?}` |
 | POST | `/api/events/` | `{exam_id, event_type, timestamp?, client_id?}` |
@@ -182,4 +205,3 @@ Active while the exam's `monitoring_enabled` is on (the teacher toggle switches 
 ## Extending
 - TODO in `backend/apps/proctoring/views.py`: add auth before exposing beyond a trusted network.
 - Swap SQLite → Postgres in `config/settings.py`; swap `MEDIA_ROOT` storage for S3 via `STORAGES`.
-- `Exam.mode` (`form` / `practical`) is already exposed in the config endpoint for future exam types.

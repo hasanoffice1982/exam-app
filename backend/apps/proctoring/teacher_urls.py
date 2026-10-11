@@ -3,8 +3,14 @@ from django.urls import path
 from . import teacher_views as v
 
 urlpatterns = [
+    path("login/", v.TeacherLoginView.as_view(), name="teacher-login"),
+    path("logout/", v.TeacherLogoutView.as_view(), name="teacher-logout"),
     path("", v.ExamListView.as_view(), name="teacher-exams"),
     path("exams/<slug:exam_id>/", v.MonitorView.as_view(), name="teacher-monitor"),
+    path("exams/<slug:exam_id>/settings/", v.ExamSettingsView.as_view(), name="teacher-settings"),
+    path("exams/<slug:exam_id>/archive/", v.ExamArchiveView.as_view(archive=True), name="teacher-archive"),
+    path("exams/<slug:exam_id>/unarchive/", v.ExamArchiveView.as_view(archive=False), name="teacher-unarchive"),
+    path("exams/<slug:exam_id>/delete-evidence/", v.EvidenceDeleteView.as_view(), name="teacher-delete-evidence"),
     path("exams/<slug:exam_id>/live.json", v.LiveJsonView.as_view(), name="teacher-live"),
     path("exams/<slug:exam_id>/students/<str:roll>/", v.StudentTimelineView.as_view(), name="teacher-timeline"),
     path("exams/<slug:exam_id>/screenshots/<int:pk>/", v.ScreenshotView.as_view(), name="teacher-screenshot"),
@@ -14,5 +20,6 @@ urlpatterns = [
     path("exams/<slug:exam_id>/events.csv", v.CsvExportView.as_view(kind="events"), name="teacher-csv-events"),
     path("exams/<slug:exam_id>/attempts/<int:pk>/force-end/", v.AttemptActionView.as_view(action="force_end"), name="teacher-force-end"),
     path("exams/<slug:exam_id>/attempts/<int:pk>/extra-time/", v.ExtraTimeView.as_view(), name="teacher-extra-time"),
+    path("exams/<slug:exam_id>/attempts/<int:pk>/advance/", v.AttemptActionView.as_view(action="advance"), name="teacher-advance"),
     path("exams/<slug:exam_id>/attempts/<int:pk>/reset/", v.AttemptActionView.as_view(action="reset"), name="teacher-reset"),
 ]

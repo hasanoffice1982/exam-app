@@ -1,0 +1,62 @@
+/* Calm admin: flat, no shadows, no animation. */
+*, *::before, *::after {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+.card, .callout, .modal-content, .dropdown-menu, .small-box, .info-box { border: 1px solid rgba(0, 0, 0, 0.12); }
+.card { border-radius: 8px; }
+.main-header.navbar { border-bottom: 1px solid rgba(0, 0, 0, 0.1); }
+.content-wrapper { background: #f3f7f6; }
+.table td, .table th { vertical-align: middle; }
+
+/* Soft light sidebar instead of the theme's dark one (Jazzmin 3 uses AdminLTE 4 class names) */
+.app-sidebar, .app-sidebar .sidebar-wrapper, .app-sidebar .sidebar-brand { background: #eaf3f1 !important; }
+.app-sidebar a, .app-sidebar .nav-header, .app-sidebar .sidebar-brand, .app-sidebar .nav-link, .app-sidebar .brand-text { color: #134e4a !important; }
+.app-sidebar .nav-link:hover { background: #d9ebe7 !important; }
+.app-sidebar .nav-link.active { background: #c9e3dd !important; color: #0f766e !important; font-weight: 600; }
+.app-sidebar .sidebar-brand, .app-sidebar .user-panel { border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important; }
+.app-sidebar .nav-header { opacity: 0.7; }
+.app-main { background: #f3f7f6; }
+
+/* Keep logos small everywhere (login page, sidebar brand) */
+.login-logo img, .login-box img, .card-header img, .brand-image { max-width: 88px; height: auto; }
+.sidebar-brand .brand-image { max-width: 34px; }
+
+/* ---- Minty's pink/white leftovers made calm and readable ---- */
+.breadcrumb { background: transparent !important; padding: 0; margin: 0; }
+.breadcrumb a { color: #0f766e !important; }
+.breadcrumb .active, .breadcrumb-item.active { color: #4b6360 !important; }
+.breadcrumb-item + .breadcrumb-item::before { color: #8aa5a1 !important; }
+
+/* Minty's "secondary" is pink; use a neutral outline instead */
+.btn-outline-secondary { color: #3f5b57 !important; border-color: #cfdcd9 !important; background: #fff !important; }
+.btn-outline-secondary:hover, .btn-outline-secondary.active, .btn-outline-secondary:focus {
+  background: #e3f0ed !important; color: #0f766e !important; border-color: #9cc9c0 !important;
+}
+.btn-secondary { background: #6b8581 !important; border-color: #6b8581 !important; color: #fff !important; }
+
+/* one look for text inputs, selects and select2 */
+.form-control, .select2-container--default .select2-selection--single, .select2-container--default .select2-selection--multiple {
+  border: 1px solid #cfdcd9 !important; border-radius: 6px !important; background: #fff; min-height: 38px;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered { line-height: 36px; color: #2f4a46; }
+.select2-container--default .select2-selection--single .select2-selection__arrow { height: 36px; }
+.form-control:focus, .select2-container--default.select2-container--focus .select2-selection--single { border-color: #0d9488 !important; outline: 0; }
+
+.app-sidebar .user-panel i, .app-sidebar .fa-inverse { color: #0f766e !important; }
+input[type="checkbox"], input[type="radio"] { accent-color: #0d9488; }
+.pagination .page-link { color: #0f766e; }
+.pagination .active .page-link { background: #0d9488; border-color: #0d9488; color: #fff; }
+
+/* ---- change forms: usable field widths, no clipped buttons ---- */
+input.vTextField, input.vURLField, input.vIntegerField, input.vDateField, input.vTimeField, input.vBigIntegerField,
+input[type="text"].form-control, input[type="url"].form-control, input[type="number"].form-control, select.form-control:not(.search-filter) {
+  width: 100% !important; max-width: 560px !important;
+}
+textarea.vLargeTextField, textarea.form-control { width: 100% !important; max-width: 560px !important; }
+#jazzy-actions .btn, .submit-row .btn, .card-footer .btn, .col-lg-3 .btn { white-space: normal !important; text-align: center; }
+.form-group label { font-weight: 600; }
+.help-block, .form-text, small.help { color: #5f7a76; }

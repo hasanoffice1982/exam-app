@@ -30,6 +30,24 @@ const drawIcon = `(size) => {
   return c.toDataURL("image/png");
 }`;
 
+// Flat logo for the web admin: no shadow, no transparent margin.
+const drawLogo = `(size) => {
+  const c = document.getElementById("c"); c.width = c.height = size;
+  const g = c.getContext("2d"); const s = size / 1024; g.scale(s, s);
+  g.beginPath(); g.roundRect(0, 0, 1024, 1024, 230);
+  const bg = g.createLinearGradient(0, 0, 1024, 1024); bg.addColorStop(0, "#0f766e"); bg.addColorStop(1, "#14b8a6");
+  g.fillStyle = bg; g.fill();
+  g.beginPath();
+  g.moveTo(512, 150); g.bezierCurveTo(620, 210, 720, 228, 790, 228);
+  g.lineTo(790, 510); g.bezierCurveTo(790, 680, 670, 790, 512, 860);
+  g.bezierCurveTo(354, 790, 234, 680, 234, 510);
+  g.lineTo(234, 228); g.bezierCurveTo(304, 228, 404, 210, 512, 150); g.closePath();
+  g.fillStyle = "#ffffff"; g.fill();
+  g.beginPath(); g.moveTo(385, 505); g.lineTo(485, 605); g.lineTo(660, 405);
+  g.lineWidth = 70; g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = "#0f766e"; g.stroke();
+  return c.toDataURL("image/png");
+}`;
+
 const drawBackground = `(scale) => {
   const c = document.getElementById("c"); c.width = 660 * scale; c.height = 400 * scale;
   const g = c.getContext("2d"); g.scale(scale, scale);
@@ -56,6 +74,7 @@ app.whenReady().then(async () => {
   await win.loadURL("data:text/html," + encodeURIComponent(PAGE));
   const run = (fn, arg) => win.webContents.executeJavaScript(`(${fn})(${arg})`);
   save("icon.png", await run(drawIcon, 1024));
+  save("admin-logo.png", await run(drawLogo, 160));
   save("dmg-background.png", await run(drawBackground, 1));
   save("dmg-background@2x.png", await run(drawBackground, 2));
   console.log("RESULT assets written:", fs.readdirSync(out).join(", "));

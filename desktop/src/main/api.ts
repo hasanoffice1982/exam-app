@@ -79,6 +79,9 @@ export const api = {
   /** Begins (or resumes) the single attempt for this exam; the server enforces batch, schedule and prior quits. */
   startExam: (examId: string) => postJson<ExamConfig>(`/api/exams/${encodeURIComponent(examId)}/start/`, {}),
 
+  /** Written part done: moves this student's attempt on to the practical part (idempotent). */
+  advanceStage: (examId: string) => postJson<ExamConfig>(`/api/exams/${encodeURIComponent(examId)}/advance/`, {}),
+
   getConfig: (examId: string) => request<ExamConfig>(`/api/config/${encodeURIComponent(examId)}/`),
 
   postConsent: (examId: string, timestamp: string) => postJson("/api/consent/", { exam_id: examId, timestamp }),

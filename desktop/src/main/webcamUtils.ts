@@ -2,8 +2,12 @@ export const MIN_INTERVAL_SECONDS = 30;
 const DARK_THRESHOLD = 8; // 0-255 average brightness below which the lens is treated as covered
 
 /** Random delay around the interval (+/-50%) so students can't predict the next photo. */
-export function nextDelayMs(intervalSeconds: number, random: () => number = Math.random): number {
-  return Math.round(Math.max(MIN_INTERVAL_SECONDS, intervalSeconds) * 1000 * (0.5 + random()));
+export function nextDelayMs(
+  intervalSeconds: number,
+  random: () => number = Math.random,
+  minSeconds: number = MIN_INTERVAL_SECONDS,
+): number {
+  return Math.round(Math.max(minSeconds, intervalSeconds) * 1000 * (0.5 + random()));
 }
 
 export function dataUrlToBuffer(dataUrl: string): Buffer {

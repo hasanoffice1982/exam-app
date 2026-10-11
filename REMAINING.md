@@ -1,6 +1,6 @@
 # Remaining work (saved for later)
 
-Done: teacher/admin-issued passwords, change password + profile + logout, email-the-password activation (needs SMTP credentials to go live); phases 1-5 (security, anti-cheat, exam control/batches/teachers, teacher dashboard, webcam + marks), screenshot compression, crash/extra-time handling, student install guide.
+Done: archive exam + evidence deletion + retention sweep + deactivate batch (audit log), calmer admin theme fixes, teacher/admin separation (own teacher login, teachers not staff), Jazzmin admin theme, exam settings page for teachers, every exam has exactly one batch, written + practical exam parts (written first, then practical), teacher/admin-issued passwords, change password + profile + logout, email-the-password activation (needs SMTP credentials to go live); phases 1-5 (security, anti-cheat, exam control/batches/teachers, teacher dashboard, webcam + marks), screenshot compression, crash/extra-time handling, student install guide.
 
 ## Build status
 - `npm run build:mac` works (fixed: `arch` must sit inside each electron-builder target). Output: `desktop/dist/ExamProctor-0.1.0-universal.dmg` (217 MB, Intel + Apple Silicon). The packaged app launches and the user confirmed it works on their Mac (2026-10-11); `.env` is baked in, currently `BACKEND_URL=http://127.0.0.1:8000`, so **change it to the real server address and rebuild before giving the file to students**.
@@ -20,7 +20,7 @@ Done: teacher/admin-issued passwords, change password + profile + logout, email-
 2. **Download page** `/download/` that detects Mac/Windows and shows the right Google Drive link (undecided; paste Drive links into a setting).
 3. **Minimum client version check**: server setting; an outdated app refuses to start the exam and points to the Drive link (undecided).
 4. **Cloud storage (S3)** for screenshots instead of local disk (undecided; needs a bucket and keys).
-5. **Backend hosting decision**: students need a reachable `BACKEND_URL` baked into the installer (LAN IP, or a tunnel/hosted server if remote). Production setup: HTTPS, gunicorn, Postgres, Redis cache (throttle counters), `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=0`, `ADMIN_API_KEY`.
+5. **Backend hosting decision** (also: `collectstatic` + WhiteNoise so the Jazzmin admin styles load with DEBUG off; set `TIME_ZONE`): students need a reachable `BACKEND_URL` baked into the installer (LAN IP, or a tunnel/hosted server if remote). Production setup: HTTPS, gunicorn, Postgres, Redis cache (throttle counters), `DJANGO_SECRET_KEY`, `DJANGO_DEBUG=0`, `ADMIN_API_KEY`.
 6. **Real-world checks nobody has run yet**:
    - macOS Screen Recording permission, then a real screenshot (`npm run verify:protection` for the black-screen protection).
    - Google Form draft recovery after a restart (form must require sign-in).

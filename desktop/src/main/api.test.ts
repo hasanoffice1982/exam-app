@@ -147,3 +147,18 @@ test("profile, change-password and logout use the session and surface server mes
   mockFetch(429, { detail: "Too many failed attempts. Try again in 15 minutes." });
   await assert.rejects(api.changePassword("x", "y"), /Too many failed attempts/);
 });
+
+test("advanceStage posts to the advance endpoint and returns the new config", async () => {
+  let url = "";
+  globalThis.fetch = (async (u: string, init: RequestInit) => {
+    url = `${init.method} ${u}`;
+    return new Response(JSON.stringify({ stage: "practical", practical_enabled: true }), { status: 200 });
+  }) as typeof fetch;
+  const config = await api.advanceStage("lab 1");
+  assert.match(url, /^POST .*\/api\/exams\/lab%201\/advance\/$/);
+  assert.equal(config.stage, "practical");
+  mockFetch(400, { detail: "This exam has no practical part." });
+  await assert.rejects(api.advanceStage("x"), /no practical part/);
+  mockFetch(403, { detail: "You quit this exam and cannot re-enter it." });
+  await assert.rejects(api.advanceStage("x"), /cannot re-enter/);
+});

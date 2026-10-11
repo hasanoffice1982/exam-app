@@ -13,6 +13,8 @@ export const EventType = {
   CameraUnavailable: "camera_unavailable",
   ConnectionLost: "connection_lost",
   ConnectionRestored: "connection_restored",
+  WrittenSubmitted: "written_submitted",
+  ExamFinished: "exam_finished",
   ExamQuit: "exam_quit",
   TimeUp: "time_up",
 } as const;

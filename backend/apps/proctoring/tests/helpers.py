@@ -12,14 +12,18 @@ from apps.proctoring.models import Exam, Student
 PASSWORD = "S3cure-test-pw"
 
 
+DEFAULT_BATCH = 81  # students and exams share a batch unless a test says otherwise
+
+
 def make_exam(exam_id: str = "math-101", **kwargs) -> Exam:
     kwargs.setdefault("name", exam_id)
+    kwargs.setdefault("batch", DEFAULT_BATCH)
     kwargs.setdefault("form_url", "https://example.com/form")
     return Exam.objects.create(exam_id=exam_id, **kwargs)
 
 
 def make_student(
-    roll: str = "1", name: str = "Ann", email: str = "ann@example.com", activated: bool = True, batch: int | None = None
+    roll: str = "1", name: str = "Ann", email: str = "ann@example.com", activated: bool = True, batch: int | None = DEFAULT_BATCH
 ) -> Student:
     student = Student(roll_number=roll, name=name, email=email, batch=batch)
     if activated:

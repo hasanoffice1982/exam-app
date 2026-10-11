@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { classifyShortcut, isAllowedUrl, KeyInput } from "./hardening";
+import { classifyShortcut, isAllowedUrl, isFormSubmissionUrl, KeyInput } from "./hardening";
 
 const press = (key: string, mods: Partial<KeyInput> = {}): KeyInput => ({
   type: "keyDown",
@@ -79,4 +79,22 @@ test("other sites, look-alike hosts and non-https schemes are refused", () => {
 test("the form's own origin is always allowed, even if not Google (e.g. a local test form)", () => {
   assert.equal(isAllowedUrl("http://127.0.0.1:9000/q2", "http://127.0.0.1:9000/q1"), true);
   assert.equal(isAllowedUrl("http://127.0.0.1:9001/q2", "http://127.0.0.1:9000/q1"), false);
+});
+
+test("a Google Form submission is recognised, other pages are not", () => {
+  const yes = [
+    "https://docs.google.com/forms/d/e/1FAIpQLSabc/formResponse",
+    "https://docs.google.com/forms/d/e/1FAIpQLSabc/formResponse?pli=1",
+    "https://docs.google.com/forms/u/0/d/e/1FAIpQLSabc/formResponse#x",
+  ];
+  const no = [
+    "https://docs.google.com/forms/d/e/1FAIpQLSabc/viewform",
+    "https://docs.google.com/forms/d/e/1FAIpQLSabc/viewform?formResponse",
+    "https://docs.google.com/forms/d/e/1FAIpQLSabc/formResponseX",
+    "https://evil.example/forms/d/e/abc/formResponse",
+    "http://docs.google.com/forms/d/e/abc/formResponse",
+    "https://docs.google.com/document/d/abc/formResponse",
+  ];
+  for (const url of yes) assert.equal(isFormSubmissionUrl(url), true, url);
+  for (const url of no) assert.equal(isFormSubmissionUrl(url), false, url);
 });

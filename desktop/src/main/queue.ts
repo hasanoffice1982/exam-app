@@ -82,6 +82,7 @@ export class UploadQueue {
   }
 
   startTimer(intervalMs: number): void {
+    clearInterval(this.timer); // the written and practical parts share one queue
     this.timer = setInterval(() => void this.flush(), intervalMs);
   }
 

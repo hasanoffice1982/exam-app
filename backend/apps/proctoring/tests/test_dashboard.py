@@ -77,7 +77,7 @@ class AccessControlTests(DashboardBase):
                     "/teacher/exams/math-101/summary.csv", "/teacher/exams/math-101/events.csv"):
             res = Client().get(url)
             self.assertEqual(res.status_code, 302, url)
-            self.assertIn("/admin/login/", res["Location"])
+            self.assertIn("/teacher/login/", res["Location"])
 
     def test_non_staff_user_is_refused(self):
         get_user_model().objects.create_user("plain", password="pw")
@@ -322,9 +322,3 @@ class WebcamDashboardTests(DashboardBase):
         self.event(self.ann, self.math, "camera_unavailable", "Permission denied")
         row = self.live(self.as_user("mathteacher"))[0]
         self.assertEqual((row["score"], row["flag"]), (2, "review"))
-
-    def test_teacher_can_toggle_webcam_in_admin_but_not_other_locked_fields(self):
-        res = self.as_user("mathteacher").get(f"/admin/proctoring/exam/{self.math.pk}/change/")
-        self.assertContains(res, 'name="webcam_enabled"')
-        self.assertContains(res, 'name="webcam_interval_seconds"')
-        self.assertNotContains(res, 'name="batch"')

@@ -50,3 +50,9 @@ test("withTimeout passes through results and errors, and rejects when work hangs
   await assert.rejects(withTimeout(new Promise(() => undefined), 20, "Camera did not respond"), /did not respond/);
   assert.equal(friendlyCameraError("Camera did not respond"), "Camera did not respond");
 });
+
+test("the minimum interval can be lowered for screenshot sampling", () => {
+  assert.equal(nextDelayMs(20, () => 0.5, 15), 20_000);
+  assert.equal(nextDelayMs(5, () => 0.5, 15), 15_000); // still floored
+  assert.equal(nextDelayMs(20, () => 0.5), 30_000); // webcam default floor unchanged
+});

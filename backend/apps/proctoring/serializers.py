@@ -13,13 +13,15 @@ class ExamListSerializer(serializers.ModelSerializer):
 
 
 class ExamConfigSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
     server_time = serializers.SerializerMethodField()
 
     class Meta:
         model = Exam
         fields = [
-            "monitoring_enabled", "form_url", "mode", "starts_at", "ends_at", "grace_seconds",
+            "name", "monitoring_enabled", "form_url", "written_enabled", "practical_enabled", "practical_instructions",
+            "practical_url", "practical_screenshot_seconds", "starts_at", "ends_at", "grace_seconds",
             "webcam_enabled", "webcam_interval_seconds", "status", "server_time",
         ]
 

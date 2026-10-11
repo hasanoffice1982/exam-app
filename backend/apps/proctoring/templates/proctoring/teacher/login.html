@@ -1,0 +1,16 @@
+{% extends "proctoring/teacher/base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+<div class="card pad" style="max-width:420px;margin:60px auto 0">
+  <h1>Teacher log in</h1>
+  <p class="muted">Use the username and password your administrator gave you.</p>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next }}">
+    {{ form.non_field_errors }}
+    <div class="field">{{ form.username.label_tag }} {{ form.username }} {{ form.username.errors }}</div>
+    <div class="field">{{ form.password.label_tag }} {{ form.password }} {{ form.password.errors }}</div>
+    <button type="submit" class="primary">Log in</button>
+  </form>
+</div>
+{% endblock %}

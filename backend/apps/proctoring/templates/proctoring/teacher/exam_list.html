@@ -2,20 +2,40 @@
 {% block title %}My exams{% endblock %}
 {% block content %}
 <h1>My exams</h1>
-<p class="muted">Only exams assigned to you are shown.</p>
-<div class="grid">
-  {% for exam in exams %}
+<p class="muted">Grouped by batch. Every exam belongs to exactly one batch, and only that batch can see it.</p>
+{% for group in groups %}
+  <h2>{% if group.batch is None %}No batch set <span class="pill ended" style="margin-left:8px">students cannot see these</span>{% else %}Batch {{ group.batch }}{% endif %}</h2>
+  <div class="grid" style="margin-top:8px">
+  {% for exam in group.exams %}
     <a class="card exam-card" href="{% url 'teacher-monitor' exam.exam_id %}">
       <h3>{{ exam.name }}</h3>
-      <div class="muted">{{ exam.exam_id }} · {% if exam.batch %}Batch {{ exam.batch }}{% else %}All batches{% endif %}</div>
+      <div class="muted">{{ exam.exam_id }}</div>
       <div style="margin-top:12px"><span class="pill {% if exam.status == 'open' %}online{% elif exam.status == 'upcoming' %}review{% else %}ended{% endif %}">{{ exam.status }}</span></div>
       <div class="stats">
         <div><b class="num">{{ exam.active }}</b><span class="muted">in progress</span></div>
         <div><b class="num">{{ exam.total }}</b><span class="muted">attempts</span></div>
       </div>
     </a>
-  {% empty %}
-    <div class="card pad muted">No exams assigned to you yet.</div>
   {% endfor %}
-</div>
+  </div>
+{% empty %}
+  <div class="card pad muted" style="margin-top:20px">No active exams assigned to you.</div>
+{% endfor %}
+{% if archived_count %}
+  <p style="margin-top:28px">
+    {% if show_archived %}<a class="btn" href="{% url 'teacher-exams' %}">Hide archived exams</a>
+    {% else %}<a class="btn" href="{% url 'teacher-exams' %}?archived=1">Show {{ archived_count }} archived exam{{ archived_count|pluralize }}</a>{% endif %}
+  </p>
+{% endif %}
+{% if archived %}
+  <h2>Archived <span class="pill ended" style="margin-left:8px">hidden from students</span></h2>
+  <div class="grid" style="margin-top:8px">
+  {% for exam in archived %}
+    <a class="card exam-card" href="{% url 'teacher-monitor' exam.exam_id %}">
+      <h3>{{ exam.name }}</h3>
+      <div class="muted">{{ exam.exam_id }} · Batch {{ exam.batch|default_if_none:"not set" }} · archived {{ exam.archived_at|date:"j M Y" }}</div>
+    </a>
+  {% endfor %}
+  </div>
+{% endif %}
 {% endblock %}

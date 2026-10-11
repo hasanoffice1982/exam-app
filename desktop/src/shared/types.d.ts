@@ -9,10 +9,18 @@ interface ExamSummary {
   status: ExamStatus;
 }
 
+type ExamStage = "written" | "practical";
+
 interface ExamConfig {
+  name: string;
   monitoring_enabled: boolean;
   form_url: string;
-  mode: string;
+  written_enabled: boolean;
+  practical_enabled: boolean;
+  practical_instructions: string;
+  practical_url: string;
+  practical_screenshot_seconds: number;
+  stage: ExamStage;
   starts_at: string | null;
   ends_at: string | null;
   grace_seconds: number;
@@ -55,4 +63,23 @@ interface ExamBridge {
 
 interface Window {
   api: ExamBridge;
+}
+
+/** What the practical window shows (built by the main process from the exam config). */
+interface PracticalInfo {
+  examName: string;
+  instructions: string;
+  url: string;
+  endsAtMs: number | null; // local clock, already corrected with the server's time
+  screenshotSeconds: number;
+}
+
+interface PracticalBridge {
+  getInfo(): Promise<PracticalInfo>;
+  finish(): Promise<void>;
+  openLink(): Promise<void>;
+}
+
+interface Window {
+  practical: PracticalBridge;
 }

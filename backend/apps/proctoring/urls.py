@@ -16,6 +16,7 @@ urlpatterns = [
     path("auth/activate/", views.ActivateView.as_view(), name="activate"),
     path("login/", views.LoginView.as_view(), name="login"),
     path("exams/", views.ExamListView.as_view(), name="exam-list"),
+    path("exams/<slug:exam_id>/advance/", views.ExamAdvanceView.as_view(), name="exam-advance"),
     path("exams/<slug:exam_id>/start/", views.ExamStartView.as_view(), name="exam-start"),
     path("config/<slug:exam_id>/", views.ExamConfigView.as_view(), name="exam-config"),
     path("", include(router.urls)),

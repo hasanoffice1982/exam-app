@@ -1,0 +1,24 @@
+{% extends "proctoring/teacher/base.html" %}
+{% block title %}{{ exam.name }} · settings{% endblock %}
+{% block content %}
+<p class="crumb"><a href="{% url 'teacher-monitor' exam.exam_id %}">← {{ exam.name }}</a></p>
+<h1>Exam settings</h1>
+<p class="muted">{{ exam.name }} · batch {{ exam.batch|default:"not set" }}. Times are in {{ time_zone }}. The name, batch and teachers are changed by an administrator.</p>
+{% if saved %}<p class="pill online" style="margin:12px 0">Saved</p>{% endif %}
+<form method="post" class="card pad" style="margin-top:14px;max-width:760px">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  {% for field in form %}
+    <div class="field">
+      {% if field.field.widget.input_type == "checkbox" %}
+        <label style="display:flex;gap:10px;align-items:center;font-weight:600">{{ field }} {{ field.label }}</label>
+      {% else %}
+        {{ field.label_tag }} {{ field }}
+      {% endif %}
+      {% if field.help_text %}<div class="muted">{{ field.help_text }}</div>{% endif %}
+      {{ field.errors }}
+    </div>
+  {% endfor %}
+  <button type="submit" class="primary">Save settings</button>
+</form>
+{% endblock %}

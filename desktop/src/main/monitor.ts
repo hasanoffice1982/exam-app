@@ -5,7 +5,7 @@ import { api, ApiError, isRetryable } from "./api";
 import { EventType, EventTypeValue } from "./eventTypes";
 import { CONFIG_POLL_INTERVAL_MS, HEARTBEAT_INTERVAL_MS, PROCESS_SCAN_INTERVAL_MS, SCREENSHOT_DELAY_MS } from "./config";
 import { GraceTimer } from "./grace";
-import { AttemptKind, hardenWindow } from "./hardening";
+import { AttemptKind, hardenWindow, isFormSubmissionUrl } from "./hardening";
 import { AttemptLimiter } from "./limiter";
 import { scanProcesses } from "./processes";
 import { nextDelayMs, friendlyCameraError } from "./webcamUtils";
@@ -13,7 +13,17 @@ import type { WebcamCapturer } from "./webcam";
 import { UploadQueue } from "./queue";
 import { captureScreen } from "./screenshot";
 
-/** Watches an exam window for blur/focus, enforces the schedule, and reports to the backend. */
+export interface MonitorOptions {
+  /** Written part finished (or a teacher moved the student on): open the practical part. Resolves when it is up. */
+  onAdvance?: (config?: ExamConfig) => Promise<void>;
+}
+
+const MIN_PRACTICAL_SHOT_SECONDS = 15;
+
+/**
+ * Watches one exam window and reports to the backend. Written part: locked full-screen Google Form, blur and
+ * clipboard enforcement. Practical part: a free window, screenshots on a timer, no blur penalty.
+ */
 export class ExamMonitor {
   private monitoringEnabled: boolean;
   private awayRecorded = false;
@@ -28,6 +38,12 @@ export class ExamMonitor {
   private webcamTimer?: NodeJS.Timeout;
   private webcamEnabled = false;
   private webcamIntervalSeconds = 180;
+  private readonly practical: boolean;
+  private practicalTimer?: NodeJS.Timeout;
+  private practicalShotSeconds: number;
+  private formSubmitted = false;
+  private handingOver = false;
+  private handedOver = false;
   private knownHits = new Set<string>();
   private hardening?: { setEnforced(on: boolean): void };
   private readonly limiter = new AttemptLimiter();
@@ -39,7 +55,10 @@ export class ExamMonitor {
     private readonly config: ExamConfig,
     private readonly queue: UploadQueue,
     private readonly webcam: WebcamCapturer,
+    private readonly options: MonitorOptions = {},
   ) {
+    this.practical = config.stage === "practical";
+    this.practicalShotSeconds = config.practical_screenshot_seconds;
     this.monitoringEnabled = config.monitoring_enabled;
     this.grace = new GraceTimer(config.grace_seconds * 1000);
     this.applySchedule(config);
@@ -50,14 +69,39 @@ export class ExamMonitor {
     if (identityPhoto) void this.queueWebcamPhoto(identityPhoto, new Date().toISOString());
     this.applyWebcamConfig(this.config);
     this.win.setContentProtection(this.monitoringEnabled); // screenshots/recordings/screen-share show the window as black
+    screen.on("display-added", this.onDisplayAdded);
+    this.scanTimer = setInterval(() => void this.scanApps(), PROCESS_SCAN_INTERVAL_MS);
+    if (this.practical) this.startPractical();
+    else this.startWritten();
+    this.win.on("closed", () => {
+      this.grace.cancel();
+      clearInterval(this.pollTimer);
+      clearInterval(this.heartbeatTimer);
+      clearTimeout(this.endTimer);
+      clearInterval(this.scanTimer);
+      clearTimeout(this.webcamTimer);
+      clearTimeout(this.practicalTimer);
+      this.webcam.dispose();
+      screen.removeListener("display-added", this.onDisplayAdded);
+      if (!this.handedOver) this.queue.stopTimer(); // the next part keeps using the same queue
+    });
+    this.pollTimer = setInterval(() => void this.refreshConfig(), CONFIG_POLL_INTERVAL_MS);
+    this.heartbeatTimer = setInterval(() => void this.heartbeat(), HEARTBEAT_INTERVAL_MS);
+    this.queue.startTimer(15_000);
+    void this.queue.flush(); // deliver anything left over from an earlier run
+  }
+
+  /** Written part: lock the window down and watch for leaving it. */
+  private startWritten(): void {
     clipboard.clear(); // nothing copied before the exam can be pasted into it
     this.hardening = hardenWindow(this.win, {
       formUrl: this.config.form_url,
       isEnforced: () => this.monitoringEnabled,
       report: (kind, detail) => this.reportAttempt(kind, detail),
     });
-    screen.on("display-added", this.onDisplayAdded);
-    this.scanTimer = setInterval(() => void this.scanApps(), PROCESS_SCAN_INTERVAL_MS);
+    this.win.webContents.on("did-navigate", (_event, url) => {
+      if (isFormSubmissionUrl(url)) void this.onFormSubmitted();
+    });
     this.win.on("blur", () => this.onBlur());
     this.win.on("focus", () => void this.onFocus());
     this.win.on("leave-full-screen", () => void this.onLeaveFullScreen());
@@ -66,21 +110,16 @@ export class ExamMonitor {
       event.preventDefault();
       void this.confirmQuit("Do you want to quit the exam?");
     });
-    this.win.on("closed", () => {
-      this.grace.cancel();
-      clearInterval(this.pollTimer);
-      clearInterval(this.heartbeatTimer);
-      clearTimeout(this.endTimer);
-      clearInterval(this.scanTimer);
-      clearTimeout(this.webcamTimer);
-      this.webcam.dispose();
-      screen.removeListener("display-added", this.onDisplayAdded);
-      this.queue.stopTimer();
+  }
+
+  /** Practical part: the student works in other apps, so switching away is normal; we sample the screen instead. */
+  private startPractical(): void {
+    this.schedulePracticalShot();
+    this.win.on("close", (event) => {
+      if (this.quitting) return;
+      event.preventDefault();
+      void this.confirmFinishPractical();
     });
-    this.pollTimer = setInterval(() => void this.refreshConfig(), CONFIG_POLL_INTERVAL_MS);
-    this.heartbeatTimer = setInterval(() => void this.heartbeat(), HEARTBEAT_INTERVAL_MS);
-    this.queue.startTimer(15_000);
-    void this.queue.flush(); // deliver anything left over from an earlier run
   }
 
   // ---- schedule ----------------------------------------------------------------------------
@@ -114,7 +153,9 @@ export class ExamMonitor {
       this.hardening?.setEnforced(config.monitoring_enabled);
       if (!this.win.isDestroyed()) this.win.setContentProtection(config.monitoring_enabled);
       this.applyWebcamConfig(config);
+      this.practicalShotSeconds = config.practical_screenshot_seconds;
       this.applySchedule(config); // teacher may have extended or shortened the exam
+      if (!this.practical && config.stage === "practical") void this.handOver(config); // a teacher moved this student on
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) return void this.sessionEnded();
       this.log("config poll failed", err);
@@ -217,6 +258,110 @@ export class ExamMonitor {
     }
   }
 
+  // ---- written -> practical ----------------------------------------------------------------
+
+  /** The Google Form was submitted: either move on to the practical part or finish. */
+  private async onFormSubmitted(): Promise<void> {
+    if (this.formSubmitted || this.quitting) return;
+    this.formSubmitted = true;
+    await this.record(EventType.WrittenSubmitted);
+    if (this.config.practical_enabled && this.options.onAdvance) {
+      await this.withDialog(() =>
+        dialog.showMessageBox(this.win, {
+          type: "info",
+          title: "Written part submitted",
+          message: "Your written answers were submitted.",
+          detail: "Next comes the practical part. Click the button to start it.",
+          buttons: ["Start practical part"],
+          defaultId: 0,
+          noLink: true,
+        }),
+      );
+      await this.handOver();
+      return;
+    }
+    await this.record(EventType.ExamFinished);
+    await this.finish(null, "Your answers were submitted.", "You can close this window. Good luck!");
+  }
+
+  /** Opens the practical part (asking the server unless a config is already known), then closes this window. */
+  private async handOver(known?: ExamConfig): Promise<void> {
+    if (this.handingOver || !this.options.onAdvance) return;
+    this.handingOver = true;
+    for (;;) {
+      try {
+        this.handedOver = true; // before the new window exists, so our queue timer isn't stopped under it
+        await this.options.onAdvance(known);
+        break;
+      } catch (err) {
+        this.handedOver = false;
+        this.log("could not start the practical part", err);
+        this.dialogOpen = false;
+        await this.withDialog(() =>
+          dialog.showMessageBox(this.win, {
+            type: "warning",
+            title: "Practical part",
+            message: "Could not start the practical part.",
+            detail: "Check your connection, then try again. Your written answers are already submitted.",
+            buttons: ["Try again"],
+            defaultId: 0,
+            noLink: true,
+          }),
+        );
+      }
+    }
+    this.quitting = true;
+    if (!this.win.isDestroyed()) this.win.close();
+  }
+
+  // ---- practical ---------------------------------------------------------------------------
+
+  /** Called from the practical window's Finish button (and when the window is closed). */
+  finishPractical(): Promise<void> {
+    return this.confirmFinishPractical();
+  }
+
+  private async confirmFinishPractical(): Promise<void> {
+    const result = await this.withDialog(() =>
+      dialog.showMessageBox(this.win, {
+        type: "question",
+        title: "Finish practical",
+        message: "Finish the practical part now?",
+        detail: "Make sure your work is saved and handed in as your teacher instructed. You cannot come back after finishing.",
+        buttons: ["Keep working", "Finish"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      }),
+    );
+    if (result?.response === 1) {
+      this.quitting = true;
+      await this.record(EventType.ExamFinished);
+      if (!this.win.isDestroyed()) this.win.close();
+    }
+  }
+
+  private schedulePracticalShot(): void {
+    this.practicalTimer = setTimeout(async () => {
+      if (this.monitoringEnabled && !this.quitting) await this.capturePracticalShot();
+      if (!this.quitting) this.schedulePracticalShot();
+    }, nextDelayMs(this.practicalShotSeconds, Math.random, MIN_PRACTICAL_SHOT_SECONDS));
+  }
+
+  private async capturePracticalShot(): Promise<void> {
+    try {
+      const jpeg = await captureScreen(this.win, "cursor");
+      await this.queue.enqueue(
+        { id: randomUUID(), kind: "screenshot", fields: { exam_id: this.examId, timestamp: new Date().toISOString() } },
+        jpeg,
+        "jpg",
+      );
+      void this.queue.flush();
+    } catch (err) {
+      this.log("practical screenshot failed", err);
+    }
+  }
+
   // ---- webcam ------------------------------------------------------------------------------
 
   /** Starts/stops the random-interval photo loop when the teacher toggles it. */
@@ -264,6 +409,7 @@ export class ExamMonitor {
     if (!this.monitoringEnabled || this.quitting) return;
     const count = screen.getAllDisplays().length;
     void this.record(EventType.DisplayAdded, undefined, `${count} displays`);
+    if (this.practical) return; // practical work may legitimately use a second screen: logged only
     void this.notify("An extra display was detected.", "Disconnect the additional monitor now. This has been recorded.");
   };
 

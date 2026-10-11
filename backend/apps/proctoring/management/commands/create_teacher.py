@@ -8,7 +8,7 @@ from apps.proctoring.teachers import ensure_teacher_group
 
 
 class Command(BaseCommand):
-    help = "Create (or update) a subject teacher who can only see and manage the given exams in /admin/."
+    help = "Create (or update) a subject teacher: logs in at /teacher/login/, sees only the given exams, has no admin access."
 
     def add_arguments(self, parser):
         parser.add_argument("username")
@@ -24,8 +24,8 @@ class Command(BaseCommand):
             raise CommandError(f"Unknown exam_id(s): {', '.join(sorted(missing))}")
 
         User = get_user_model()
-        user, created = User.objects.get_or_create(username=username, defaults={"email": email, "is_staff": True})
-        user.is_staff = True
+        user, created = User.objects.get_or_create(username=username, defaults={"email": email})
+        user.is_staff = False  # teachers never use /admin/
         user.is_superuser = False
         if email:
             user.email = email

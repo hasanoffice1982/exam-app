@@ -106,19 +106,27 @@ class StudentToken(models.Model):
 
 
 class Exam(models.Model):
-    class Mode(models.TextChoices):
-        FORM = "form", "Form"
-        PRACTICAL = "practical", "Practical"
+    """An exam has a written part (Google Form), a practical part, or both. Order is fixed: written, then practical."""
 
     exam_id = models.SlugField(max_length=64, unique=True)
     name = models.CharField(max_length=200)
-    form_url = models.URLField(max_length=500)
+    form_url = models.URLField(max_length=500, blank=True, help_text="Google Form link (needed when the written part is on)")
     monitoring_enabled = models.BooleanField(default=True)
-    mode = models.CharField(max_length=20, choices=Mode.choices, default=Mode.FORM)
-    batch = models.PositiveIntegerField(null=True, blank=True, help_text="Only this batch can take the exam. Empty = all batches")
+    written_enabled = models.BooleanField(default=True, help_text="Written part: the Google Form in a locked full-screen window")
+    practical_enabled = models.BooleanField(
+        default=False, help_text="Practical part (after the written part): free window, screenshots on a timer"
+    )
+    practical_instructions = models.TextField(blank=True, help_text="Shown to students in the practical window")
+    practical_url = models.URLField(max_length=500, blank=True, help_text="Optional link opened from the practical window")
+    practical_screenshot_seconds = models.PositiveSmallIntegerField(
+        default=60,
+        validators=[MinValueValidator(15), MaxValueValidator(600)],
+        help_text="Average time between screenshots in the practical part (randomised +/-50%)",
+    )
+    batch = models.PositiveIntegerField(null=True, blank=False, help_text="The one batch that takes this exam. Required: every exam belongs to exactly one batch")
     teachers = models.ManyToManyField(
-        settings.AUTH_USER_MODEL, blank=True, related_name="exams_taught", limit_choices_to={"is_staff": True},
-        help_text="Staff users who can monitor this exam and end student attempts",
+        settings.AUTH_USER_MODEL, blank=True, related_name="exams_taught", limit_choices_to={"groups__name": "Teachers"},
+        help_text="Teachers who can monitor this exam, end student attempts and edit its schedule (they use the teacher dashboard, never /admin/)",
     )
     starts_at = models.DateTimeField(null=True, blank=True, help_text="Empty = no start restriction")
     ends_at = models.DateTimeField(null=True, blank=True, help_text="Empty = no end time")
@@ -131,13 +139,33 @@ class Exam(models.Model):
     grace_seconds = models.PositiveSmallIntegerField(
         default=3, help_text="Switching away for less than this many seconds is ignored"
     )
+    archived = models.BooleanField(default=False, help_text="Finished and published: hidden from students and from the default teacher list")
+    archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["name"]
 
     def is_open_to(self, student: "Student") -> bool:
-        return self.batch is None or self.batch == student.batch
+        return self.batch is not None and self.batch == student.batch  # no batch set = nobody can take it yet
+
+    def clean(self) -> None:
+        super().clean()
+        errors = {}
+        if self.starts_at and self.ends_at and self.ends_at <= self.starts_at:
+            errors["ends_at"] = "The end time must be after the start time."
+        if not (self.written_enabled or self.practical_enabled):
+            errors["written_enabled"] = "Turn on the written part, the practical part, or both."
+        if self.written_enabled and not self.form_url:
+            errors["form_url"] = "The written part needs a Google Form link."
+        if self.practical_enabled and not (self.practical_instructions.strip() or self.practical_url):
+            errors["practical_instructions"] = "The practical part needs instructions or a link."
+        if errors:
+            raise ValidationError(errors)
+
+    @property
+    def first_stage(self) -> str:
+        return "written" if self.written_enabled else "practical"
 
     def status_with_extra(self, extra_minutes: int = 0) -> str:
         now = timezone.now()
@@ -155,6 +183,24 @@ class Exam(models.Model):
         return f"{self.name} ({self.exam_id})"
 
 
+class AuditEntry(models.Model):
+    """Who archived, unarchived or deleted evidence, and when. Never edited by hand."""
+
+    exam = models.ForeignKey(Exam, on_delete=models.SET_NULL, null=True, blank=True, related_name="audit_entries")
+    exam_label = models.CharField(max_length=300, blank=True)  # survives the exam being deleted
+    action = models.CharField(max_length=40)
+    detail = models.CharField(max_length=300, blank=True)
+    performed_by = models.CharField(max_length=150)
+    at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-at"]
+        verbose_name_plural = "audit entries"
+
+    def __str__(self) -> str:
+        return f"{self.action} by {self.performed_by} on {self.exam_label}"
+
+
 class ExamAttempt(models.Model):
     """One attempt per student per exam. Quitting or a forced end is final until a teacher resets it."""
 
@@ -170,6 +216,12 @@ class ExamAttempt(models.Model):
     started_at = models.DateTimeField(default=timezone.now)
     ended_at = models.DateTimeField(null=True, blank=True)
     extra_minutes = models.PositiveSmallIntegerField(default=0, help_text="Extra time given to this student by a teacher")
+
+    class Stage(models.TextChoices):
+        WRITTEN = "written", "Written part"
+        PRACTICAL = "practical", "Practical part"
+
+    stage = models.CharField(max_length=10, choices=Stage.choices, default=Stage.WRITTEN)
 
     @property
     def ends_at(self):

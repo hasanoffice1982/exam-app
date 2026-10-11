@@ -14,10 +14,11 @@ class ConfigTests(IsolatedMixin, APITestCase):
         self.client, _ = authed_client(make_student())
 
     def test_get_config_shape_and_query_count(self):
-        with self.assertNumQueries(2):  # auth, exam
+        with self.assertNumQueries(3):  # auth, exam, the student's attempt (stage + extra time)
             res = self.client.get("/api/config/math-101/")
         self.assertEqual(res.status_code, 200)
-        for key in ("monitoring_enabled", "form_url", "mode", "starts_at", "ends_at", "grace_seconds", "status", "server_time"):
+        for key in ("name", "monitoring_enabled", "form_url", "written_enabled", "practical_enabled", "practical_instructions", "practical_url",
+                    "practical_screenshot_seconds", "stage", "starts_at", "ends_at", "grace_seconds", "status", "server_time"):
             self.assertIn(key, res.data)
         self.assertEqual(res.data["grace_seconds"], 3)
 

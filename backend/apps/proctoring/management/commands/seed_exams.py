@@ -7,11 +7,13 @@ SAMPLES = [
         "exam_id": "math-101",
         "name": "Mathematics 101",
         "form_url": "https://docs.google.com/forms/d/e/REPLACE_WITH_REAL_FORM_ID/viewform?embedded=true",
+        "batch": 81,
     },
     {
         "exam_id": "physics-101",
         "name": "Physics 101",
         "form_url": "https://docs.google.com/forms/d/e/REPLACE_WITH_REAL_FORM_ID/viewform",
+        "batch": 81,
     },
 ]
 

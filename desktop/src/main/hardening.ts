@@ -35,6 +35,11 @@ export function classifyShortcut(input: KeyInput): AttemptKind | null {
   return null;
 }
 
+/** A Google Form submission lands on .../formResponse; that is how we know the written part is done. */
+export function isFormSubmissionUrl(url: string): boolean {
+  return /^https:\/\/docs\.google\.com\/forms\/.+\/formResponse(?:[?#]|$)/.test(url);
+}
+
 // Hosts a Google Form legitimately needs (the form itself, sign-in, assets, embedded media).
 const ALLOWED_HOST_SUFFIXES = [
   "google.com",

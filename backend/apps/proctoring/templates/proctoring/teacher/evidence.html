@@ -1,0 +1,22 @@
+{% extends "proctoring/teacher/base.html" %}
+{% block title %}{{ exam.name }} · delete screenshots{% endblock %}
+{% block content %}
+<p class="crumb"><a href="{% url 'teacher-monitor' exam.exam_id %}">← {{ exam.name }}</a></p>
+<h1>Delete screenshots &amp; photos</h1>
+<div class="card pad" style="max-width:640px;margin-top:16px">
+  <p><strong>{{ count }}</strong> image{{ count|pluralize }} ({{ size_kb }} KB) from <strong>{{ exam.name }}</strong> would be deleted for good: every screenshot and webcam photo.</p>
+  <p class="muted">The event log (tab switches, restarts, ...), scores, attempts and marks are kept. Download the CSVs first if you want a copy. This cannot be undone.</p>
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  {% if allowed %}
+  <form method="post">
+    {% csrf_token %}
+    <div class="field"><label for="confirm">Type <code>{{ exam.exam_id }}</code> to confirm</label>
+      <input id="confirm" name="confirm" type="text" autocomplete="off" required></div>
+    <button type="submit" class="danger">Delete {{ count }} image{{ count|pluralize }}</button>
+  </form>
+  {% else %}
+  <p class="pill review">Not allowed yet</p>
+  <p class="muted">Screenshots can only be deleted after the exam has ended or been archived, so nothing is lost while students may still be taking it.</p>
+  {% endif %}
+</div>
+{% endblock %}

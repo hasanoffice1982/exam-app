@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-for (const dir of ["renderer", "camera"]) {
+for (const dir of ["renderer", "camera", "practical"]) {
   const src = path.join(__dirname, "..", "src", dir);
   const dest = path.join(__dirname, "..", "build", dir);
   fs.mkdirSync(dest, { recursive: true });

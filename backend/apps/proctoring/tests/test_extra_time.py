@@ -80,14 +80,12 @@ class ExtraTimeApiTests(IsolatedMixin, APITransactionTestCase):
         event = ProctorEvent.objects.get(event_type="time_extended")
         self.assertEqual((event.student, event.detail), ("Ann (1)", "+10 min by teacher"))
 
-    def test_untimed_exams_cost_no_extra_query_for_config(self):
+    def test_config_costs_the_same_for_timed_and_untimed_exams(self):
+        with self.assertNumQueries(3):  # auth, exam, the student's attempt (stage + extra time)
+            self.ann_client.get("/api/config/math-101/")
         self.exam.ends_at = None
         self.exam.save()
-        with self.assertNumQueries(2):  # auth, exam
-            self.ann_client.get("/api/config/math-101/")
-
-    def test_timed_exams_cost_one_extra_query_for_the_attempt(self):
-        with self.assertNumQueries(3):  # auth, exam, the student's attempt
+        with self.assertNumQueries(3):
             self.ann_client.get("/api/config/math-101/")
 
 
