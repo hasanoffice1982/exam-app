@@ -1,0 +1,212 @@
+import logging
+import secrets
+from datetime import timedelta
+
+from django.conf import settings
+from django.core.cache import cache
+from django.core.mail import send_mail
+from django.db.models import F
+from django.db.models.functions import Least
+from django.utils import timezone
+
+from .authentication import hash_token
+from .event_types import EventType
+from .models import ExamAttempt, ProctorEvent, Student, StudentToken
+
+logger = logging.getLogger(__name__)
+
+MAX_FAILED_ACTIVATIONS = 5
+LOCKOUT_SECONDS = 15 * 60
+# No look-alike characters (0/O, 1/l/I) since students must copy this by hand.
+PASSWORD_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+PASSWORD_LENGTH = 12
+
+
+class AuthError(Exception):
+    def __init__(self, message: str, status: int = 400):
+        super().__init__(message)
+        self.message = message
+        self.status = status
+
+
+def check_lockout(key: str) -> None:
+    if cache.get(key, 0) >= MAX_FAILED_ACTIVATIONS:
+        raise AuthError("Too many failed attempts. Try again in 15 minutes.", 429)
+
+
+def register_failure(key: str) -> None:
+    cache.set(key, cache.get(key, 0) + 1, LOCKOUT_SECONDS)
+
+
+def issue_token(student: Student) -> str:
+    """Replaces any existing session (one session per student) and returns the raw bearer token."""
+    raw = secrets.token_urlsafe(32)
+    StudentToken.objects.update_or_create(
+        student=student,
+        defaults={
+            "key_hash": hash_token(raw),
+            "issued_at": timezone.now(),
+            "expires_at": timezone.now() + timedelta(hours=settings.STUDENT_TOKEN_TTL_HOURS),
+            "last_seen_at": None,
+        },
+    )
+    return raw
+
+
+def authenticate_student(roll_number: str, password: str) -> Student:
+    key = f"login-fail:{roll_number}"
+    check_lockout(key)
+    student = Student.objects.filter(roll_number=roll_number, is_active=True).first()
+    if student is not None and not student.is_activated:
+        hint = "Use 'First time? Activate account'." if settings.SELF_ACTIVATION else "Ask your teacher for your password."
+        raise AuthError(f"Account not activated. {hint}", 401)
+    if student is None or not student.check_password(password):
+        register_failure(key)
+        raise AuthError("Invalid roll number or password.", 401)
+    cache.delete(key)
+    return student
+
+
+def new_password() -> str:
+    return "".join(secrets.choice(PASSWORD_ALPHABET) for _ in range(PASSWORD_LENGTH))
+
+
+def issue_first_time_passwords(students) -> list[tuple[Student, str]]:
+    """Gives each student a fresh random password and returns the plaintexts for ONE printed handout.
+
+    Only hashes are stored, so the sheet cannot be reproduced. Any existing session of a student whose
+    password changed is revoked. Used by admins/teachers instead of (or alongside) emailing passwords.
+    """
+    issued = []
+    for student in students:
+        password = new_password()
+        student.set_password(password)
+        student.save(update_fields=["password"])
+        issued.append((student, password))
+    StudentToken.objects.filter(student_id__in=[s.pk for s, _ in issued]).delete()
+    return issued
+
+
+MIN_PASSWORD_LENGTH = 8
+
+
+def change_password(student: Student, current_password: str, new_password: str) -> None:
+    """Self-service change. Wrong current passwords count towards the same 5-try lockout as login."""
+    key = f"change-fail:{student.roll_number}"
+    check_lockout(key)
+    if not student.check_password(current_password):
+        register_failure(key)
+        raise AuthError("Your current password is not correct.", 400)
+    if len(new_password) < MIN_PASSWORD_LENGTH:
+        raise AuthError(f"The new password must be at least {MIN_PASSWORD_LENGTH} characters.", 400)
+    if new_password == current_password:
+        raise AuthError("The new password must be different from the current one.", 400)
+    if new_password.casefold() == student.roll_number.casefold():
+        raise AuthError("The new password cannot be your roll number.", 400)
+    student.set_password(new_password)
+    student.save(update_fields=["password"])
+    cache.delete(key)
+
+
+def mask_email(email: str) -> str:
+    """ann.smith@gmail.com -> a***@gmail.com"""
+    local, _, domain = email.partition("@")
+    return f"{local[:1]}***@{domain}"
+
+
+def _email_password(student: Student, password: str) -> None:
+    send_mail(
+        subject="Your ExamProctor password",
+        message=(
+            f"Hello {student.name},\n\n"
+            f"Your ExamProctor account is ready.\n\n"
+            f"Roll number: {student.roll_number}\n"
+            f"Password:    {password}\n\n"
+            "Open the ExamProctor app and log in with these. Keep this password private.\n"
+            "If you did not ask for it, ignore this email and tell your teacher."
+        ),
+        from_email=None,
+        recipient_list=[student.email],
+        fail_silently=False,
+    )
+
+
+def activate_student(roll_number: str, email: str) -> str:
+    """If roll number and email match a not-yet-activated student, email them a random password.
+
+    The password only ever travels to the registered inbox (it is never returned to the caller), and
+    only its hash is stored. If the email cannot be sent the account is left not-activated so the
+    student can simply try again. Returns the masked address for display.
+    """
+    if not settings.SELF_ACTIVATION:
+        raise AuthError("Ask your teacher for your password.", 403)
+    key = f"activate-fail:{roll_number}"
+    check_lockout(key)
+
+    student = Student.objects.filter(roll_number=roll_number, is_active=True).first()
+    if student is None or not student.email or student.email.lower() != email.strip().lower():
+        register_failure(key)
+        raise AuthError("Roll number and email do not match our records.", 400)
+    if student.is_activated:
+        raise AuthError("This account is already activated. Log in with your password, or ask your teacher to reset it.", 409)
+
+    password = new_password()
+    student.set_password(password)
+    student.save(update_fields=["password"])
+    try:
+        _email_password(student, password)
+    except Exception:
+        logger.exception("Could not email the activation password for roll %s", roll_number)
+        student.password = ""
+        student.save(update_fields=["password"])
+        raise AuthError("We could not send the email. Please try again in a minute or tell your teacher.", 503)
+    cache.delete(key)
+    return mask_email(student.email)
+
+
+def force_end_attempts(attempts, by_username: str) -> int:
+    """Ends in-progress attempts: revokes the sessions, blocks re-entry and logs who did it."""
+    rows = list(attempts.filter(status=ExamAttempt.Status.IN_PROGRESS).select_related("student"))
+    if not rows:
+        return 0
+    now = timezone.now()
+    ProctorEvent.objects.bulk_create(
+        ProctorEvent(student=a.student.label, exam_id=a.exam_id, event_type=EventType.FORCE_ENDED, detail=by_username[:200], timestamp=now)
+        for a in rows
+    )
+    StudentToken.objects.filter(student_id__in=[a.student_id for a in rows]).delete()
+    ExamAttempt.objects.filter(pk__in=[a.pk for a in rows]).update(status=ExamAttempt.Status.FORCE_ENDED, ended_at=now)
+    return len(rows)
+
+
+def reset_attempts(attempts) -> int:
+    count, _ = ExamAttempt.objects.filter(pk__in=attempts.values("pk")).delete()
+    return count
+
+
+MAX_EXTRA_MINUTES = 480
+MAX_GRANT_MINUTES = 180
+
+
+def add_extra_time(attempts, minutes: int, by_username: str) -> int:
+    """Gives students extra time (capped), reopens attempts that ran out of time, and logs who did it.
+
+    Quit and teacher-ended attempts are never reopened by this; use reset for those.
+    """
+    rows = list(attempts.select_related("student"))
+    if not rows:
+        return 0
+    now = timezone.now()
+    pks = [a.pk for a in rows]
+    ExamAttempt.objects.filter(pk__in=pks).update(extra_minutes=Least(F("extra_minutes") + minutes, MAX_EXTRA_MINUTES))
+    ExamAttempt.objects.filter(pk__in=pks, status=ExamAttempt.Status.COMPLETED).update(
+        status=ExamAttempt.Status.IN_PROGRESS, ended_at=None
+    )
+    ProctorEvent.objects.bulk_create(
+        ProctorEvent(
+            student=a.student.label, exam_id=a.exam_id, event_type=EventType.TIME_EXTENDED,
+            detail=f"+{minutes} min by {by_username}"[:200], timestamp=now,
+        )
+        for a in rows
+    )
+    return len(rows)

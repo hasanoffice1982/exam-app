@@ -1,0 +1,138 @@
+{% extends "proctoring/teacher/base.html" %}
+{% block title %}{{ exam.name }} · live monitor{% endblock %}
+{% block content %}
+<p class="crumb"><a href="{% url 'teacher-exams' %}">← My exams</a></p>
+<h1>{{ exam.name }}</h1>
+<p class="muted">Live monitor · refreshes every 10 s · <span id="updated"></span></p>
+
+<div class="tiles">
+  <div class="tile"><b id="t-total">0</b><span>Students</span></div>
+  <div class="tile ok"><b id="t-online">0</b><span>Online</span></div>
+  <div class="tile warn"><b id="t-offline">0</b><span>Offline</span></div>
+  <div class="tile bad"><b id="t-flagged">0</b><span>Flagged</span></div>
+</div>
+
+<div class="toolbar">
+  <div class="chips" id="chips">
+    <button class="chip active" data-filter="all">All</button>
+    <button class="chip" data-filter="online">Online</button>
+    <button class="chip" data-filter="offline">Offline</button>
+    <button class="chip" data-filter="flagged">Flagged</button>
+    <button class="chip" data-filter="ended">Ended</button>
+  </div>
+  <input type="search" id="search" placeholder="Search name or roll…" aria-label="Search students">
+  <span class="spacer"></span>
+  {% if exam.batch %}
+  <form method="post" action="{% url 'teacher-passwords' exam.exam_id %}" style="margin:0" onsubmit="return confirm('Generate first-time passwords for every student of batch {{ exam.batch }} who has none yet? They are shown only once.')">{% csrf_token %}<button>First-time passwords (batch {{ exam.batch }})</button></form>
+  {% endif %}
+  <a class="btn" href="{% url 'teacher-marks' exam.exam_id %}">Marks from Google Form</a>
+  <a class="btn" href="{% url 'teacher-csv-summary' exam.exam_id %}">Summary CSV</a>
+  <a class="btn" href="{% url 'teacher-csv-events' exam.exam_id %}">Events CSV</a>
+</div>
+
+<div class="card scroll">
+  <table>
+    <thead><tr><th>Student</th><th>Batch</th><th>State</th><th>Flag</th><th>Score</th><th>Tab switches</th><th>Restarts</th><th>Extra time</th><th>Last event</th><th>Actions</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+<script id="initial" type="application/json">{{ rows_json|safe }}</script>
+<script>
+(() => {
+  const base = "{% url 'teacher-monitor' exam.exam_id %}";
+  const csrf = "{{ csrf_token }}";
+  const tbody = document.getElementById("rows");
+  const fmt = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "–";
+  const COLORS = ["#0d9488", "#0284c7", "#059669", "#d97706", "#64748b", "#0891b2", "#65a30d", "#b45309"];
+  let rows = [];
+  let filter = "all";
+  let query = "";
+
+  function el(tag, props = {}, ...children) {
+    const node = Object.assign(document.createElement(tag), props);
+    node.append(...children);
+    return node;
+  }
+  const pill = (text, cls) => el("span", { className: "pill " + cls, textContent: text });
+
+  function td(tr, ...children) { const c = tr.insertCell(); c.append(...children); return c; }
+
+  async function act(id, what, label, body) {
+    if (!confirm(label)) return;
+    await fetch(`${base}attempts/${id}/${what}/`, { method: "POST", headers: { "X-CSRFToken": csrf }, body });
+    refresh();
+  }
+
+  function matches(r) {
+    if (filter === "online" && r.state !== "online") return false;
+    if (filter === "offline" && r.state !== "offline") return false;
+    if (filter === "ended" && r.state !== "ended") return false;
+    if (filter === "flagged" && r.flag !== "flagged") return false;
+    const q = query.trim().toLowerCase();
+    return !q || r.name.toLowerCase().includes(q) || r.roll_number.toLowerCase().includes(q);
+  }
+
+  function render() {
+    const count = (fn) => rows.filter(fn).length;
+    document.getElementById("t-total").textContent = rows.length;
+    document.getElementById("t-online").textContent = count((r) => r.state === "online");
+    document.getElementById("t-offline").textContent = count((r) => r.state === "offline");
+    document.getElementById("t-flagged").textContent = count((r) => r.flag === "flagged");
+
+    tbody.replaceChildren();
+    const visible = rows.filter(matches);
+    if (!visible.length) {
+      const tr = tbody.insertRow();
+      const c = td(tr, rows.length ? "No students match this filter." : "No student has started this exam yet.");
+      c.colSpan = 10; c.className = "empty";
+    }
+    for (const r of visible) {
+      const tr = tbody.insertRow();
+      const initials = r.name.split(/\s+/).map((p) => p[0]).slice(0, 2).join("").toUpperCase();
+      const link = el("a", { href: `${base}students/${encodeURIComponent(r.roll_number)}/`, textContent: r.name });
+      const avatar = el("span", { className: "avatar", textContent: initials });
+      avatar.style.background = COLORS[parseInt(r.roll_number, 36) % COLORS.length || 0];
+      td(tr, el("div", { className: "person" }, avatar, el("div", {}, link, el("small", { textContent: "Roll " + r.roll_number }))));
+      td(tr, r.batch ?? "–");
+      td(tr, pill(r.state === "ended" ? r.status_label : r.state, r.state));
+      td(tr, pill(r.flag, r.flag));
+      td(tr, el("span", { className: "num" + (r.score >= 5 ? " hot" : ""), textContent: r.score }));
+      td(tr, el("span", { className: "num", textContent: r.tab_switches }));
+      td(tr, el("span", { className: "num", textContent: r.restarts }));
+      td(tr, r.extra_minutes ? `+${r.extra_minutes} min` : "–");
+      td(tr, fmt(r.last_event_at));
+      const actions = el("div", { className: "actions" });
+      if (r.status === "in_progress" || r.status === "completed") {
+        actions.append(el("button", { textContent: "+10 min", onclick: () => act(r.attempt_id, "extra-time", `Give ${r.name} 10 more minutes?`, new URLSearchParams({ minutes: "10" })) }));
+      }
+      if (r.status === "in_progress") {
+        actions.append(el("button", { className: "danger", textContent: "End attempt", onclick: () => act(r.attempt_id, "force-end", `End ${r.name}'s exam now?`) }));
+      } else {
+        actions.append(el("button", { textContent: "Allow restart", onclick: () => act(r.attempt_id, "reset", `Let ${r.name} start the exam again?`) }));
+      }
+      td(tr, actions);
+    }
+    document.getElementById("updated").textContent = "updated " + new Date().toLocaleTimeString();
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch(`${base}live.json`, { credentials: "same-origin" });
+      if (res.ok) { rows = (await res.json()).rows; render(); }
+    } catch (_) { /* keep the previous table */ }
+  }
+
+  document.getElementById("chips").addEventListener("click", (e) => {
+    if (!e.target.dataset.filter) return;
+    filter = e.target.dataset.filter;
+    document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c === e.target));
+    render();
+  });
+  document.getElementById("search").addEventListener("input", (e) => { query = e.target.value; render(); });
+
+  rows = JSON.parse(document.getElementById("initial").textContent);
+  render();
+  setInterval(refresh, 10000);
+})();
+</script>
+{% endblock %}

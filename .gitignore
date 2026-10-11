@@ -1,0 +1,7 @@
+.DS_Store
+.idea/
+.vscode/
+*.log
+# secrets and local data (also ignored inside backend/ and desktop/)
+.env
+*.sqlite3

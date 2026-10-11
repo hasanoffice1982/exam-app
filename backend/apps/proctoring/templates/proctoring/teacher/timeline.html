@@ -1,0 +1,32 @@
+{% extends "proctoring/teacher/base.html" %}
+{% block title %}{{ attempt.student.name }} · {{ exam.name }}{% endblock %}
+{% block content %}
+<p class="crumb"><a href="{% url 'teacher-monitor' exam.exam_id %}">← {{ exam.name }}</a></p>
+<h1>{{ attempt.student.name }}</h1>
+<p class="muted">Roll {{ attempt.student.roll_number }}{% if attempt.student.batch %} · Batch {{ attempt.student.batch }}{% endif %}</p>
+<div class="tiles">
+  <div class="tile {% if flag == 'flagged' %}bad{% elif flag == 'review' %}warn{% else %}ok{% endif %}"><b>{{ flag|title }}</b><span>Proctor score {{ score }}</span></div>
+  <div class="tile"><b style="font-size:1.1rem">{{ attempt.get_status_display }}</b><span>Attempt status</span></div>
+  <div class="tile"><b style="font-size:1.1rem">{{ attempt.started_at|date:"H:i" }}</b><span>Started{% if attempt.ended_at %} · ended {{ attempt.ended_at|date:"H:i" }}{% endif %}</span></div>
+</div>
+<h2>Timeline</h2>
+<div class="card">
+  <ul class="timeline">
+  {% for item in items %}
+    {% if item.kind == "event" %}
+    <li class="event{% if item.weight %} weighted{% endif %}">
+      <time>{{ item.time|date:"H:i:s" }}</time><strong>{{ item.label }}</strong>{% if item.detail %} <span class="muted">({{ item.detail }})</span>{% endif %}
+      {% if item.weight %}<span class="weight">+{{ item.weight }}</span>{% endif %}
+    </li>
+    {% else %}
+    <li class="shot">
+      <time>{{ item.time|date:"H:i:s" }}</time><strong>{{ item.shot_label }}</strong>
+      <a href="{% url 'teacher-screenshot' exam.exam_id item.id %}" target="_blank"><img loading="lazy" src="{% url 'teacher-screenshot' exam.exam_id item.id %}" alt="{{ item.shot_label }} at {{ item.time|date:'H:i:s' }}"></a>
+    </li>
+    {% endif %}
+  {% empty %}
+    <li class="muted">Nothing recorded for this student.</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endblock %}

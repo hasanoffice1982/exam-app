@@ -1,0 +1,99 @@
+{
+  "name": "exam-proctor-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Exam proctoring desktop client (MVP)",
+  "main": "build/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-assets.js",
+    "dev": "npm run build && electron .",
+    "start": "npm run build && electron .",
+    "verify:protection": "npm run build && electron scripts/verify-content-protection.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:win": "npm run build && electron-builder --win",
+    "build:all": "npm run build && electron-builder --mac --win",
+    "test": "npm run build && node --test build/main/*.test.js",
+    "verify:compression": "npm run build && electron scripts/verify-compression.js",
+    "make:assets": "electron scripts/make-assets.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.9.0"
+  },
+  "build": {
+    "appId": "com.codersfly.examproctor",
+    "productName": "ExamProctor",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "build/**/*",
+      "!build/**/*.test.js",
+      "!build/**/*.map",
+      "node_modules/**/*",
+      "package.json",
+      ".env"
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "category": "public.app-category.education",
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Screenshots are captured when you switch away from the exam window.",
+        "NSCameraUsageDescription": "Photos from your camera are taken during exams that require it."
+      },
+      "icon": "assets/icon.png"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "dmg": {
+      "title": "Install ExamProctor",
+      "background": "assets/dmg-background.png",
+      "iconSize": 110,
+      "window": {
+        "width": 660,
+        "height": 400
+      },
+      "contents": [
+        {
+          "x": 180,
+          "y": 200,
+          "type": "file"
+        },
+        {
+          "x": 480,
+          "y": 200,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    }
+  },
+  "author": "ExamProctor"
+}

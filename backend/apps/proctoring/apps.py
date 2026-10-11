@@ -1,0 +1,9 @@
+from django.apps import AppConfig
+
+
+class ProctoringConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "apps.proctoring"
+
+    def ready(self) -> None:
+        from . import checks  # noqa: F401  (registers the system checks)

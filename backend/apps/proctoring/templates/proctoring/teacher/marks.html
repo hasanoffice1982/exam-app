@@ -1,0 +1,46 @@
+{% extends "proctoring/teacher/base.html" %}
+{% block title %}{{ exam.name }} · marks{% endblock %}
+{% block content %}
+<p class="crumb"><a href="{% url 'teacher-monitor' exam.exam_id %}">← {{ exam.name }}</a></p>
+<h1>Marks</h1>
+<p class="muted">Export the Google Form responses as CSV (Responses tab → Link to Sheets → File → Download → CSV) and upload it here. Nothing is stored.</p>
+<div class="card pad">
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="field">{{ form.responses.label_tag }} {{ form.responses }} {{ form.responses.errors }}</div>
+    <div class="field">{{ form.roll_column.label_tag }} {{ form.roll_column }} <span class="muted">{{ form.roll_column.help_text }}</span></div>
+    <div class="field">{{ form.score_column.label_tag }} {{ form.score_column }} <span class="muted">{{ form.score_column.help_text }}</span></div>
+    <button type="submit" class="primary">Preview</button>
+    <button type="submit" name="download" value="1">Download marks CSV</button>
+  </form>
+</div>
+<p class="muted">Rules: quit the exam → 0 · ended by teacher → blank (decide) · no form submission → blank · otherwise the form's own score. Flagged students carry a note to review first.</p>
+{% if rows %}
+<div class="card scroll">
+  <p class="muted" style="padding:14px 16px 0">Columns used: roll = “{{ used.roll }}”, score = “{{ used.score }}”.</p>
+  <table>
+    <thead><tr><th>Roll</th><th>Name</th><th>Attempt</th><th>Flag</th><th>Form score</th><th>Final mark</th><th>Note</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td>{{ r.roll_number }}</td><td>{{ r.name }}</td><td>{{ r.attempt_status }}</td>
+        <td><span class="pill {{ r.flag }}">{{ r.flag }}</span></td>
+        <td>{{ r.form_score|default_if_none:"–" }}{% if r.form_max %} / {{ r.form_max }}{% endif %}</td>
+        <td><strong>{{ r.final_mark|default_if_none:"–" }}</strong></td>
+        <td>{{ r.note }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if outside %}
+<h2>Submitted outside the app</h2>
+<p class="muted">These roll numbers sent the form but have no proctored attempt for this exam.</p>
+<div class="card"><table>
+  <thead><tr><th>Roll</th><th>Score</th><th>Submissions</th></tr></thead>
+  <tbody>{% for o in outside %}<tr><td>{{ o.roll }}</td><td>{{ o.score }}</td><td>{{ o.submissions }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'"
+    />
+    <title>Exam</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <section id="consent-screen">
+        <h1>Exam Proctoring Notice</h1>
+        <p>This exam is proctored. Screenshots are captured when you switch away from this window.</p>
+        <p class="muted">If your exam requires it, photos from your webcam are also taken occasionally. The camera is only on for a moment each time.</p>
+        <button id="start-btn" type="button">Start Exam</button>
+      </section>
+
+      <section id="login-screen" hidden>
+        <h1>Student Login</h1>
+        <form id="login-form">
+          <label>Roll number <input id="roll" type="text" required autocomplete="off" /></label>
+          <label>Password <input id="password" type="password" required autocomplete="off" /></label>
+          <input class="hp" id="hp-login" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <button id="login-btn" type="submit">Log in</button>
+        </form>
+        <p><a href="#" id="to-activate">First time? Activate account</a></p>
+      </section>
+
+      <section id="activate-screen" hidden>
+        <h1>Activate your account</h1>
+        <p>Enter your roll number and the email registered with your school. We will email you a secure password.</p>
+        <form id="activate-form">
+          <label>Roll number <input id="a-roll" type="text" required autocomplete="off" /></label>
+          <label>Registered email <input id="a-email" type="email" required autocomplete="off" /></label>
+          <input class="hp" id="hp-activate" type="text" tabindex="-1" autocomplete="off" aria-hidden="true" />
+          <button id="activate-btn" type="submit">Email me my password</button>
+        </form>
+        <p><a href="#" id="to-login">Back to login</a></p>
+      </section>
+
+      <section id="exam-screen" hidden>
+        <div class="topbar">
+          <span>Welcome, <strong id="e-name"></strong></span>
+          <span><a href="#" id="to-profile">My profile</a> · <a href="#" id="logout-link">Log out</a></span>
+        </div>
+        <h1>Select your exam</h1>
+        <form id="exam-form">
+          <label>Exam / subject
+            <select id="exam" required><option value="">Loading…</option></select>
+          </label>
+          <p id="exam-time"></p>
+          <button id="begin-btn" type="submit">Begin exam</button>
+        </form>
+      </section>
+
+      <section id="profile-screen" hidden>
+        <h1>My profile</h1>
+        <dl class="profile">
+          <dt>Name</dt><dd id="pf-name"></dd>
+          <dt>Roll number</dt><dd id="pf-roll"></dd>
+          <dt>Batch</dt><dd id="pf-batch"></dd>
+          <dt>Email</dt><dd id="pf-email"></dd>
+        </dl>
+        <h2>Change password</h2>
+        <form id="password-form">
+          <label>Current password <input id="pw-current" type="password" required autocomplete="current-password" /></label>
+          <label>New password (min 8 characters) <input id="pw-new" type="password" required minlength="8" autocomplete="new-password" /></label>
+          <label>Confirm new password <input id="pw-confirm" type="password" required minlength="8" autocomplete="new-password" /></label>
+          <button id="pw-btn" type="submit">Change password</button>
+        </form>
+        <p><a href="#" id="profile-back">Back to exams</a></p>
+      </section>
+
+      <p id="error" role="alert" hidden></p>
+      <p id="info" hidden></p>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>

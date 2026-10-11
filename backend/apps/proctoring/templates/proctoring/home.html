@@ -1,0 +1,18 @@
+{% extends "proctoring/teacher/base.html" %}
+{% block title %}ExamProctor{% endblock %}
+{% block content %}
+<div style="max-width:760px;margin:24px auto 0;text-align:center">
+  <h1 style="font-size:2.2rem">ExamProctor</h1>
+  <p class="muted" style="font-size:1.05rem">Exam server is running.</p>
+</div>
+<div class="grid" style="max-width:960px;margin-left:auto;margin-right:auto">
+  <a class="card exam-card" href="/teacher/"><h3>Teacher dashboard</h3>
+    <div class="muted">Live monitor, student timelines, marks and CSV export.</div></a>
+  <a class="card exam-card" href="/admin/"><h3>Admin</h3>
+    <div class="muted">Students, batches, exams and teacher accounts.</div></a>
+  {% if download_url %}
+  <a class="card exam-card" href="{{ download_url }}" rel="noopener"><h3>Student app (Mac)</h3>
+    <div class="muted">Download the installer. Install steps are in the guide your teacher shared.</div></a>
+  {% endif %}
+</div>
+{% endblock %}
