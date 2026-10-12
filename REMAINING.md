@@ -28,3 +28,20 @@ Done: archive exam + evidence deletion + retention sweep + deactivate batch (aud
    - Packaged `.dmg` install on a clean Mac; Windows `.exe` build (needs Wine + Rosetta on Apple Silicon, or a Windows PC).
    - A pilot with 3-5 students on both operating systems.
 7. Housekeeping ideas: face detection on webcam photos, batch-wide reports, bulk "move students to batch N" admin action.
+
+## MVP gap analysis (2026-10-13) — plan for next day
+Verdict: ready for a 3-5 student LAN pilot; not for a high-stakes exam until P0 is done.
+
+**P0 (before a real exam)**
+- Real-hardware checks: Screen Recording permission, real screenshots, content protection, webcam, clean .dmg install, Google Form draft recovery after restart.
+- Rebuild .dmg with BACKEND_URL=http://192.168.0.100:8000.
+- Production server: gunicorn, WhiteNoise/collectstatic, HTTPS, real SECRET_KEY, DEBUG=0, TIME_ZONE.
+- Backups of SQLite DB and media folder.
+- Delete test data (TEST1, TEST2, test-both); set batches for math-101/physics-101; make test_user a teacher.
+
+**P1 backend**: Redis/DB cache for throttles+lockouts; Postgres for >50 students; S3 option; scheduled purge_evidence; min client version check; "went offline at X for Y min" in timeline; logging/error tracking; clamp old timestamps.
+**P1 student app**: offline notice; grace period if offline at time-out; Windows build (skipped for now); face/multi-person detection; accessibility.
+**P1 teacher dashboard (user asked to make it nicer)**: summary cards on exam list; monitor status filter + search; coloured score pills; sticky header; timeline screenshot thumbnails + event icons; breadcrumbs/primary action; batch-wide reports; bulk move-students-to-batch; last-updated indicator; tablet layout.
+**P2**: E2E test in CI (real Electron + backend); privacy/retention notice for students; teacher password self-reset + admin 2FA; download page; in-app help/support contact; grade export.
+
+Suggested order: real-world checks -> rebuild dmg -> production setup + backups -> offline notice/grace -> teacher dashboard upgrade -> P2.
