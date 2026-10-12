@@ -64,3 +64,19 @@ textarea.vLargeTextField, textarea.form-control { width: 100% !important; max-wi
 /* teachers as a tidy checkbox list */
 #id_teachers { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 22px; }
 #id_teachers li label { display: flex; gap: 8px; align-items: center; margin: 0; font-weight: 500; }
+
+/* ---- changelist toolbar: filters, search and "Add" aligned on one grid ---- */
+#changelist-search { align-items: flex-start !important; gap: 10px !important; }
+#changelist-search .form-group { margin: 0; }
+#changelist-search .select2-container { min-width: 120px; }
+#changelist-search #searchbar { flex: 1 1 320px; width: auto !important; max-width: none !important; height: 38px; }
+#changelist-search .btn { height: 38px; padding: 0 18px; display: inline-flex; align-items: center; }
+#change-list-filters > .d-flex { flex-wrap: nowrap !important; align-items: flex-start !important; gap: 12px !important; }
+#change-list-filters > .d-flex > .btn, #change-list-filters > .d-flex > a.btn { flex: none; height: 38px; display: inline-flex; align-items: center; white-space: nowrap; }
+#jazzy-actions { display: flex; align-items: center; gap: 10px; margin: 4px 0 14px; }
+#jazzy-actions .form-group, #jazzy-actions .btn { margin: 0; }
+#jazzy-actions .btn { height: 38px; padding: 0 18px; display: inline-flex; align-items: center; }
+
+/* login: icon sits beside the field, not under it */
+.login-box .input-group { flex-wrap: nowrap !important; }
+.login-box .input-group .input-group-text, .login-box .input-group .input-group-append, .login-box .input-group .input-group-prepend { height: 38px; display: flex; align-items: center; }
