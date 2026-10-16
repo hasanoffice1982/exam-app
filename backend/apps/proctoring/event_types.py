@@ -1,6 +1,13 @@
 """Single list of event names. The desktop client mirrors it in desktop/src/main/eventTypes.ts
 (a desktop test fails if the two drift apart)."""
-from enum import StrEnum
+try:
+    from enum import StrEnum
+except ImportError:  # Python < 3.11 (e.g. PythonAnywhere's 3.10)
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        def __str__(self) -> str:
+            return str(self.value)
 
 
 class EventType(StrEnum):
