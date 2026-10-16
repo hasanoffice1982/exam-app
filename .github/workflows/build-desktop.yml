@@ -7,6 +7,10 @@ on:
         description: Backend URL baked into the installer (no trailing slash)
         required: true
         default: https://hasan082.pythonanywhere.com
+      release_tag:
+        description: Publish the installers as a GitHub Release with this tag (e.g. v0.1.0). Leave empty to skip.
+        required: false
+        default: ""
 
 jobs:
   build:
@@ -45,3 +49,24 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.files }}
           if-no-files-found: error
+
+  release:
+    needs: build
+    if: ${{ inputs.release_tag != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: installers
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release create "$TAG" installers/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "ExamProctor $TAG" \
+            --notes "Windows: ExamProctor Setup .exe. Mac: ExamProctor .dmg. Backend: ${{ inputs.backend_url }}"
