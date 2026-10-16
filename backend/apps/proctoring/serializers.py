@@ -62,7 +62,7 @@ class _ExamRefMixin(serializers.Serializer):
         request = self.context.get("request")
         exam = attrs.get("exam")
         if request is not None and exam is not None and not exam.is_open_to(request.user):
-            raise serializers.ValidationError({"exam_id": "This exam is not assigned to your batch."})
+            raise serializers.ValidationError({"exam_id": "This exam is not assigned to you."})
         return attrs
 
 

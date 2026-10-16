@@ -15,6 +15,7 @@ from .models import (
     ProctorScreenshot,
     Student,
     StudentToken,
+    Subject,
 )
 
 
@@ -36,12 +37,12 @@ class ReadOnlyLogAdmin(admin.ModelAdmin):
 
 @admin.register(Exam)
 class ExamAdmin(admin.ModelAdmin):
-    list_display = ("exam_id", "name", "batch", "written_enabled", "practical_enabled", "monitoring_enabled", "starts_at", "ends_at", "status")
-    list_filter = ("archived", "batch")
+    list_display = ("exam_id", "name", "batch", "subject", "written_enabled", "practical_enabled", "monitoring_enabled", "starts_at", "ends_at", "status")
+    list_filter = ("archived", "batch", "subject")
     list_editable = ("monitoring_enabled",)
     search_fields = ("exam_id", "name")
     fieldsets = (
-        ("Exam", {"fields": ("exam_id", "name", "batch", "teachers")}),
+        ("Exam", {"fields": ("exam_id", "name", "batch", "subject", "teachers")}),
         ("Written part (Google Form)", {"fields": ("written_enabled", "form_url")}),
         ("Practical part (after the written part)", {"fields": ("practical_enabled", "practical_instructions", "practical_url", "practical_screenshot_seconds")}),
         ("Schedule", {"fields": ("starts_at", "ends_at")}),
@@ -151,7 +152,8 @@ class StudentAdminForm(forms.ModelForm):
 
     class Meta:
         model = Student
-        fields = ["roll_number", "name", "email", "batch", "is_active"]
+        fields = ["roll_number", "name", "email", "batch", "subjects", "is_active"]
+        widgets = {"subjects": forms.CheckboxSelectMultiple}
 
     def clean(self):
         data = super().clean()
@@ -170,12 +172,18 @@ class BatchChangeInline(admin.TabularInline):
         return False
 
 
+@admin.register(Subject)
+class SubjectAdmin(admin.ModelAdmin):
+    list_display = ("name",)
+    search_fields = ("name",)
+
+
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
     form = StudentAdminForm
     inlines = [BatchChangeInline]
     list_display = ("roll_number", "name", "batch", "email", "activated", "is_active")
-    list_filter = ("batch", "is_active")
+    list_filter = ("batch", "subjects", "is_active")
     search_fields = ("roll_number", "name")
     actions = ["generate_passwords", "reset_activation", "deactivate_selected", "reactivate_selected"]
 

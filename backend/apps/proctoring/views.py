@@ -138,22 +138,21 @@ class HeartbeatView(APIView):
 
 
 class ExamListView(ListAPIView):
-    """Only exams assigned to the student's own batch."""
+    """Only exams of the student's own batch (and subjects)."""
 
     serializer_class = ExamListSerializer
     permission_classes = [IsStudent]
     pagination_class = None
 
     def get_queryset(self):
-        batch = self.request.user.batch
-        return Exam.objects.filter(batch=batch, archived=False) if batch is not None else Exam.objects.none()
+        return Exam.open_to_batch_and_subjects(self.request.user).filter(archived=False)
 
 
 def exam_for_student(request, exam_id: str) -> Exam:
     """The exam, if it exists and is assigned to the student's batch; otherwise 404 / 403 with a reason."""
     exam = get_object_or_404(Exam, exam_id=exam_id)
     if not exam.is_open_to(request.user):
-        raise PermissionDenied("This exam is not assigned to your batch.")
+        raise PermissionDenied("This exam is not assigned to you.")
     if exam.archived:
         raise PermissionDenied("This exam has been archived.")
     return exam

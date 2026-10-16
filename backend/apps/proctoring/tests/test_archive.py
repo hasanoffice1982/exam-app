@@ -38,7 +38,7 @@ class ArchiveApiTests(IsolatedMixin, TestCase):
 
     def test_the_batch_message_wins_for_students_of_another_batch(self):
         other, _ = authed_client(make_student(roll="2", name="Bob", email="b@x.com", batch=82))
-        self.assertEqual(other.post("/api/exams/math-101/start/").data["detail"], "This exam is not assigned to your batch.")
+        self.assertEqual(other.post("/api/exams/math-101/start/").data["detail"], "This exam is not assigned to you.")
 
     def test_unarchiving_restores_access(self):
         services.unarchive_exam(self.exam, "t")

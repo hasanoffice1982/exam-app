@@ -14,6 +14,18 @@ def screenshot_upload_path(instance: "ProctorScreenshot", filename: str) -> str:
     return f"screenshots/{instance.exam.exam_id}/{student}/{filename}"
 
 
+class Subject(models.Model):
+    """A course (e.g. Mathematics). Students are enrolled in subjects; an exam can belong to one subject."""
+
+    name = models.CharField(max_length=100, unique=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Student(models.Model):
     roll_number = models.CharField(max_length=50, unique=True)
     name = models.CharField(max_length=200)
@@ -21,6 +33,10 @@ class Student(models.Model):
     password = models.CharField(max_length=128, blank=True)  # hashed; blank = not activated yet
     is_active = models.BooleanField(default=True)
     batch = models.PositiveIntegerField(null=True, blank=True, help_text="Batch number. Can only move forward.")
+    subjects = models.ManyToManyField(
+        Subject, blank=True, related_name="students",
+        help_text="Subjects this student takes. They only see exams of these subjects (and exams that have no subject).",
+    )
 
     # DRF treats any object with these attributes as an authenticated user.
     is_authenticated = True
@@ -126,6 +142,10 @@ class Exam(models.Model):
         help_text="Average time between screenshots in the practical part (randomised +/-50%)",
     )
     batch = models.PositiveIntegerField(null=True, blank=False, help_text="The one batch that takes this exam. Required: every exam belongs to exactly one batch")
+    subject = models.ForeignKey(
+        Subject, null=True, blank=True, on_delete=models.PROTECT, related_name="exams",
+        help_text="Optional. If set, only students enrolled in this subject (and in the batch) see the exam",
+    )
     teachers = models.ManyToManyField(
         settings.AUTH_USER_MODEL, blank=True, related_name="exams_taught", limit_choices_to={"groups__name": "Teachers"},
         help_text="Teachers who can monitor this exam, end student attempts and edit its schedule (they use the teacher dashboard, never /admin/)",
@@ -149,7 +169,25 @@ class Exam(models.Model):
         ordering = ["name"]
 
     def is_open_to(self, student: "Student") -> bool:
-        return self.batch is not None and self.batch == student.batch  # no batch set = nobody can take it yet
+        if self.batch is None or self.batch != student.batch:  # no batch set = nobody can take it yet
+            return False
+        return self.subject_id is None or student.subjects.filter(pk=self.subject_id).exists()
+
+    def students(self) -> "models.QuerySet[Student]":
+        """Everyone who can take this exam: the batch, narrowed to the subject when the exam has one."""
+        if self.batch is None:
+            return Student.objects.none()
+        found = Student.objects.filter(batch=self.batch)
+        return found.filter(subjects=self.subject_id) if self.subject_id else found
+
+    @classmethod
+    def open_to_batch_and_subjects(cls, student: "Student") -> "models.QuerySet[Exam]":
+        """Exams this student may see: their batch, and either no subject or one of theirs."""
+        if student.batch is None:
+            return cls.objects.none()
+        return cls.objects.filter(batch=student.batch).filter(
+            models.Q(subject__isnull=True) | models.Q(subject__in=student.subjects.all())
+        )
 
     def clean(self) -> None:
         super().clean()

@@ -88,6 +88,9 @@ Log in at `/teacher/login/` with your teacher account; you only see exams assign
 Each student has a **batch** number, and **every exam belongs to exactly one batch** (required; there is no "all batches"). Students only see and can only start exams of their own batch. A student without a batch, or an exam without one, matches nothing. The teacher dashboard lists exams grouped by batch, with a warning group for exams that have no batch yet.
 Batches move **forward only** (81 -> 82 or 85, never 95 -> 94; first assignment is free). The rule is enforced in the model, in `/admin/` and in the CSV import (offending rows are skipped and reported). Every move is logged in the student's *Batch changes* table with who did it. Only superusers manage students and batches.
 
+## Subjects (optional)
+`/admin/` → Subjects creates courses. Tick a student's subjects on the student page, and set an exam's **Subject**. A student sees an exam when the batch matches and, if the exam has a subject, the student is enrolled in it. Exams with no subject are open to the whole batch, so existing setups are unchanged. The teacher's student list and first-time password sheet are narrowed the same way.
+
 ## Teachers and administrators (two separate worlds)
 - **Administrators (super admin)** use `/admin/` (a flat, light teal Jazzmin theme: no shadows, no animation). They manage students, batches, exams, teacher accounts, sessions and evidence. The super admin can also open `/teacher/` with the same login and sees **every** exam there, but neither site links to the other.
 - **Teachers** use only `/teacher/` with their own login page (`/teacher/login/`). They are not staff, cannot log in to `/admin/`, and nothing in the teacher pages links to it. They see only the exams assigned to them. Five wrong passwords lock a username for 15 minutes.
