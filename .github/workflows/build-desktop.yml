@@ -1,0 +1,47 @@
+name: Build desktop installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_url:
+        description: Backend URL baked into the installer (no trailing slash)
+        required: true
+        default: https://hasan082.pythonanywhere.com
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: build:win
+            artifact: ExamProctor-windows
+            files: desktop/dist/*.exe
+          - os: macos-latest
+            script: build:mac
+            artifact: ExamProctor-mac
+            files: desktop/dist/*.dmg
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - name: Write .env (baked into the installer)
+        shell: bash
+        run: echo "BACKEND_URL=${{ inputs.backend_url }}" > .env
+      - run: npm run ${{ matrix.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
